@@ -21,7 +21,7 @@ export default function BracketItemCard() {
           </Typography>
         </CardContent>
       </Box>
-      <CardMedia component="img" sx={{ width: 151 }} alt="Bracket Image" />
+      <CardMedia component="img" sx={{ width: 200 }} alt="Bracket Image" />
     </Card>
   );
 }
