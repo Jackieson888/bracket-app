@@ -43,8 +43,8 @@ export default function NavBar() {
           </Typography>
           <Box sx={{ flexGrow: 0 }}>
             <pre>{JSON.stringify(user, null, 2)}</pre>
-            {/* <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
-              <Avatar alt="user.fullName" src="/static/images/avatar/2.jpg" />
+            <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
+              <Avatar alt={user.name} src={user.picture} />
             </IconButton>
             <Menu
               sx={{ mt: "45px" }}
@@ -69,7 +69,7 @@ export default function NavBar() {
                   </Typography>
                 </MenuItem>
               ))}
-            </Menu> */}
+            </Menu>
           </Box>
         </Toolbar>
       </AppBar>

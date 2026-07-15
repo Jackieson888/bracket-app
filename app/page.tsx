@@ -1,10 +1,12 @@
 "use client";
 
 import { Container, Box, Stack } from "@mui/material";
+import NavBar from "./components/nav-bar";
 
 export default function Home() {
   return (
     <Container maxWidth="md">
+      <NavBar />
       <Box
         sx={{
           my: 2,
