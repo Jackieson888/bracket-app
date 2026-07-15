@@ -7,7 +7,9 @@ import {
   Menu,
   MenuItem,
   IconButton,
+  Button,
   Avatar,
+  Stack,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import { useState } from "react";
@@ -41,9 +43,22 @@ export default function NavBar() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             News
           </Typography>
+          {!user && (
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="contained"
+                size="large"
+                href="/auth/login?screen_hint=signup"
+              >
+                Signup
+              </Button>
+              <Button variant="contained" size="large" href="/auth/login">
+                Login
+              </Button>
+            </Stack>
+          )}
           {user && (
             <Box sx={{ flexGrow: 0 }}>
-              <pre>{JSON.stringify(user, null, 2)}</pre>
               <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
                 <Avatar alt={user.name} src={user.picture} />
               </IconButton>
@@ -63,13 +78,11 @@ export default function NavBar() {
                 open={Boolean(anchorElUser)}
                 onClose={handleCloseUserMenu}
               >
-                {settings.map((setting) => (
-                  <MenuItem key={setting} onClick={handleCloseUserMenu}>
-                    <Typography sx={{ textAlign: "center" }}>
-                      {setting}
-                    </Typography>
-                  </MenuItem>
-                ))}
+                <MenuItem onClick={handleCloseUserMenu}>
+                  <Button variant="contained" size="large" href="/auth/logout">
+                    Logout
+                  </Button>
+                </MenuItem>
               </Menu>
             </Box>
           )}
