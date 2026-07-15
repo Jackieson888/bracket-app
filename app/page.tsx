@@ -1,7 +1,6 @@
 "use client";
 
 import { Container, Box, Stack } from "@mui/material";
-import BracketItemCard from "./components/bracket-item-card";
 
 export default function Home() {
   return (
@@ -20,9 +19,7 @@ export default function Home() {
           direction="column"
           useFlexGap
           sx={{ flexWrap: "wrap" }}
-        >
-          <BracketItemCard />
-        </Stack>
+        ></Stack>
       </Box>
     </Container>
   );
