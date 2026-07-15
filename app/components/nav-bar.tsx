@@ -15,11 +15,8 @@ import MenuIcon from "@mui/icons-material/Menu";
 import { useState } from "react";
 import { useUser } from "../user-provider";
 
-const settings = ["Profile", "Account", "Dashboard", "Logout"];
-
 export default function NavBar() {
   const { user, setGuestMode } = useUser();
-  const [anchorElNav, setAnchorElNav] = useState<null | HTMLElement>(null);
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
   const handleOpenUserMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorElUser(event.currentTarget);
