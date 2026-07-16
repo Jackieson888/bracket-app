@@ -8,6 +8,7 @@ import "./globals.css";
 import theme from "../src/theme";
 import UserProvider from "./user-provider";
 import { Container, Box } from "@mui/material";
+import NavBar from "./components/nav-bar";
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
   const session = await auth0.getSession();
@@ -21,6 +22,7 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
           <AppRouterCacheProvider options={{ enableCssLayer: true }}>
             <ThemeProvider theme={theme}>
               <CssBaseline />
+              <NavBar />
               <Container maxWidth="md">
                 <Box
                   sx={{

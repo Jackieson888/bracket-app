@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {
   AppBar,
@@ -18,12 +20,15 @@ import { useUser } from "../user-provider";
 export default function NavBar() {
   const { user, setGuestMode } = useUser();
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
+
   const handleOpenUserMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorElUser(event.currentTarget);
   };
+
   const handleCloseUserMenu = () => {
     setAnchorElUser(null);
   };
+
   return (
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static">
@@ -37,9 +42,11 @@ export default function NavBar() {
           >
             <MenuIcon />
           </IconButton>
+
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            News
+            [Bracket App]
           </Typography>
+
           {!user && (
             <Stack direction="row" spacing={2}>
               <Button
@@ -54,11 +61,13 @@ export default function NavBar() {
               </Button>
             </Stack>
           )}
+
           {user && (
             <Box sx={{ flexGrow: 0 }}>
               <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
                 <Avatar alt={user.name} src={user.picture} />
               </IconButton>
+
               <Menu
                 sx={{ mt: "45px" }}
                 id="menu-appbar"

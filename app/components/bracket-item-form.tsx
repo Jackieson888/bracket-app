@@ -24,12 +24,12 @@ const VisuallyHiddenInput = styled("input")({
   width: 1,
 });
 
-export default function BracketForm() {
+export default function BracketItemForm() {
   return (
-    <Card sx={{ width: "100%" }}>
+    <Card>
       <CardContent>
         <Typography gutterBottom variant="h5" component="div">
-          Create Bracket
+          Bracket Item
         </Typography>
         <Divider />
         <Box
@@ -39,13 +39,14 @@ export default function BracketForm() {
             display: "flex",
             flexDirection: "column",
             gap: 3,
+            width: "24em",
           }}
         >
           <Stack spacing={3}>
             <TextField
               id="title-input"
               label="Title"
-              helperText="(e.g. 'My Favorite Things')"
+              helperText="(e.g. 'Title Example')"
               fullWidth
             />
           </Stack>
@@ -53,7 +54,7 @@ export default function BracketForm() {
             <TextField
               id="subtitle-input"
               label="Subtitle"
-              helperText="(e.g. 'The best things ever!')"
+              helperText="(e.g. 'Subtitle Example')"
               fullWidth
             />
           </Stack>
@@ -80,7 +81,7 @@ export default function BracketForm() {
             />
 
             <Button variant="contained" size="large">
-              Create Bracket
+              Create Bracket Item
             </Button>
           </Stack>
         </Box>

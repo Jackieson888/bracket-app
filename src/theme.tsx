@@ -24,6 +24,28 @@ const theme = createTheme({
       paper: "#B1CDC6",
     },
   },
+  components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          background: "#162727",
+        },
+      },
+    },
+    MuiContainer: {
+      styleOverrides: {
+        root: ({ theme }) => ({
+          paddingLeft: 0,
+          paddingRight: 0,
+
+          [theme.breakpoints.up("sm")]: {
+            paddingLeft: 0,
+            paddingRight: 0,
+          },
+        }),
+      },
+    },
+  },
 });
 
 export default theme;
