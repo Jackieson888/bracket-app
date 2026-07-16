@@ -1,6 +1,7 @@
 "use client";
+
+import { useState } from "react";
 import {
-  styled,
   Stack,
   Typography,
   Divider,
@@ -10,21 +11,38 @@ import {
   CardContent,
   TextField,
 } from "@mui/material";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-
-const VisuallyHiddenInput = styled("input")({
-  clip: "rect(0 0 0 0)",
-  clipPath: "inset(50%)",
-  height: 1,
-  overflow: "hidden",
-  position: "absolute",
-  bottom: 0,
-  left: 0,
-  whiteSpace: "nowrap",
-  width: 1,
-});
+import { useUser } from "../user-provider";
 
 export default function BracketForm() {
+  const [loading, setLoading] = useState(false);
+  const [title, setTitle] = useState("");
+  const [subtitle, setSubtitle] = useState("");
+  const { user } = useUser();
+
+  const handleSubmit = async () => {
+    const payload = {
+      title,
+      subtitle,
+      user,
+    };
+
+    try {
+      setLoading(true);
+      const res = await fetch("/api/bracket", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      console.log("Recommendations", data);
+    } catch (err) {
+      console.error("Error finding recommendations:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card sx={{ width: "100%" }}>
       <CardContent>
@@ -45,7 +63,8 @@ export default function BracketForm() {
             <TextField
               id="title-input"
               label="Title"
-              helperText="(e.g. 'My Favorite Things')"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               fullWidth
             />
           </Stack>
@@ -53,33 +72,22 @@ export default function BracketForm() {
             <TextField
               id="subtitle-input"
               label="Subtitle"
-              helperText="(e.g. 'The best things ever!')"
+              value={subtitle}
+              onChange={(e) => setSubtitle(e.target.value)}
               fullWidth
             />
           </Stack>
           <Stack spacing={3}>
-            <Typography gutterBottom variant="body2">
-              Media Upload
-            </Typography>
-            <Button
-              component="label"
-              role={undefined}
-              variant="contained"
-              tabIndex={-1}
-              color="warning"
-              startIcon={<CloudUploadIcon />}
-            >
-              Upload Media File
-              <VisuallyHiddenInput
-                type="file"
-                onChange={(event) => console.log(event.target.files)}
-              />
-            </Button>
             <Divider
               sx={{ bgcolor: (theme) => theme.palette.secondary.main }}
             />
 
-            <Button variant="contained" size="large">
+            <Button
+              variant="contained"
+              size="large"
+              onClick={handleSubmit}
+              loading={loading}
+            >
               Create Bracket
             </Button>
           </Stack>
