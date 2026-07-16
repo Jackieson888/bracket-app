@@ -33,9 +33,7 @@ export default function BracketForm() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      console.log("Recommendations", data);
+      console.log("Recommendations", res);
     } catch (err) {
       console.error("Error finding recommendations:", err);
     } finally {
