@@ -34,23 +34,31 @@ export default function NewBracketItemCard({ onAddItem }) {
     });
 
     const data = await res.json();
+
+    const newItem = {
+      title,
+      url: data.url,
+      width: data.width,
+      height: data.height,
+    };
+
     setUploading(false);
 
-    return data.url;
+    return newItem;
   };
 
   const handleSubmit = async () => {
     if (!title) return;
 
-    let imageUrl = null;
+    let imageObj = null;
 
     if (file) {
-      imageUrl = await handleUpload(file);
+      imageObj = await handleUpload(file);
     }
 
     const newItem = {
       title,
-      imageUrl,
+      ...imageObj,
     };
 
     onAddItem(newItem);

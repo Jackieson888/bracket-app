@@ -39,7 +39,7 @@ export default function CreateBracketPage() {
         }}
       >
         {bracketItems.length > 0 && (
-          <Stack spacing={1} sx={{ mb: 2 }}>
+          <Stack spacing={1} sx={{ mb: 2, width: "100%" }}>
             {bracketItems.map((item, idx) => (
               <BracketItemCard key={idx} item={item} />
             ))}

@@ -54,6 +54,14 @@ const theme = createTheme({
         },
       },
     },
+    MuiStack: {
+      styleOverrides: {
+        root: {
+          width: "100%",
+          alignItems: "center",
+        },
+      },
+    },
   },
 });
 
