@@ -12,6 +12,7 @@ import {
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { useState } from "react";
+import { Add } from "@mui/icons-material";
 
 const HiddenInput = styled("input")({
   display: "none",
@@ -68,8 +69,52 @@ export default function NewBracketItemCard({ onAddItem }) {
   };
 
   return (
-    <Card>
-      <CardContent>
+    <Card
+      sx={{
+        display: "flex",
+        maxHeight: "100px",
+        height: "100px",
+        width: "100%",
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          width: "stretch",
+        }}
+      >
+        <CardContent>
+          <TextField
+            label="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            fullWidth
+          />
+        </CardContent>
+      </Box>
+      <IconButton component="label">
+        <CloudUploadIcon />
+        <HiddenInput type="file" onChange={(e) => setFile(e.target.files[0])} />
+      </IconButton>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+        }}
+      >
+        <IconButton
+          aria-label="delete"
+          color="primary"
+          onClick={handleSubmit}
+          disabled={uploading}
+        >
+          <Add />
+        </IconButton>
+      </Box>
+      {/* <CardContent>
         <Box
           sx={{
             display: "flex",
@@ -106,7 +151,7 @@ export default function NewBracketItemCard({ onAddItem }) {
             </Button>
           </Stack>
         </Box>
-      </CardContent>
+      </CardContent> */}
     </Card>
   );
 }

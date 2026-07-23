@@ -10,11 +10,18 @@ const theme = createTheme({
     fontFamily: "var(--font-roboto)",
   },
   palette: {
+    common: {
+      black: "#0B1313",
+      white: "#F4F4F4",
+    },
     primary: {
       main: "#123F3E",
     },
     secondary: {
       main: "#A73E26",
+    },
+    info: {
+      main: "#E79F7F",
     },
     warning: {
       main: "#BDDDF4",
@@ -45,12 +52,20 @@ const theme = createTheme({
         }),
       },
     },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: "12px",
+        },
+      },
+    },
     MuiCardContent: {
       styleOverrides: {
         root: {
           "&:last-child": {
             paddingBottom: "16px",
           },
+          borderRadius: "12px",
         },
       },
     },

@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
 import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
@@ -8,21 +11,70 @@ import Typography from "@mui/material/Typography";
 import MediaModal from "./media-modal";
 import Image from "next/image";
 import { IconButton } from "@mui/material";
-import { Delete } from "@mui/icons-material";
+import { Delete, Edit } from "@mui/icons-material";
 
-export default function BracketItemCard({ item }) {
+export default function BracketItemCard({
+  item,
+  index,
+  id,
+  onDeleteItem,
+  onEditItem,
+  isOverlay,
+}) {
   const [open, setOpen] = useState(false);
 
-  const handleDelete = (item) => {};
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id,
+    animateLayoutChanges: ({ isSorting, wasSorting }) =>
+      isSorting || wasSorting,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  };
 
   return (
     <>
-      <Card sx={{ display: "flex", cursor: "pointer" }}>
-        <Box sx={{ display: "flex", flexDirection: "column" }}>
+      <Card
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        sx={{
+          display: "flex",
+          maxHeight: "100px",
+          height: "100px",
+          width: "100%",
+          ...(isOverlay && {
+            transform: "scale(1.05)",
+            boxShadow: 6,
+          }),
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            width: "stretch",
+          }}
+        >
           <CardContent>
-            <Typography variant="h5">{item.title}</Typography>
-            <Typography variant="subtitle1" sx={{ color: "text.secondary" }}>
-              {item.url ?? "No file uploaded"}
+            <Typography
+              variant="h5"
+              color="primary"
+              sx={{ fontWeight: "bold" }}
+            >
+              {item.title}
             </Typography>
           </CardContent>
         </Box>
@@ -33,12 +85,32 @@ export default function BracketItemCard({ item }) {
             alt={item.title}
             width={item.width}
             height={item.height}
-            style={{ width: 200, height: "auto", borderRadius: 8 }}
+            style={{ width: "auto", height: 100, borderRadius: 8 }}
+            onClick={() => setOpen(true)}
           />
         )}
 
-        <Box sx={{ display: "flex", flexDirection: "column" }}>
-          <IconButton aria-label="delete" onClick={handleDelete}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            backgroundColor: "#E79F7F",
+          }}
+        >
+          <IconButton
+            aria-label="edit"
+            color="secondary"
+            onClick={() => onEditItem(index)}
+          >
+            <Edit />
+          </IconButton>
+          <IconButton
+            aria-label="delete"
+            color="secondary"
+            onClick={() => onDeleteItem(index)}
+            sx={{ opacity: 0.5 }}
+          >
             <Delete />
           </IconButton>
         </Box>

@@ -7,15 +7,16 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const client = await clientPromise;
-    const db = client.db("brackets");
+    const db = client.db("test");
     const brackets = db.collection("brackets");
 
     const user = session?.user ?? { guest: true };
 
     const doc = {
       title: body.title,
-      subtitle: body.subtitle,
-      user,
+      description: body.description,
+      items: body.items,
+      user: user,
       createdAt: new Date(),
     };
 
