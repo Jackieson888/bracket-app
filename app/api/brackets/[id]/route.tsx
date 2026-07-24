@@ -5,7 +5,7 @@ export async function GET(_req, { params }) {
   const db = client.db("test");
   const brackets = db.collection("brackets");
 
-  const { id } = params;
+  const { id } = await params;
 
   const result = await brackets.findOne({ _id: id });
 
