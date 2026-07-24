@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     const db = client.db("test");
     const brackets = db.collection("brackets");
 
-    const results = await brackets.find();
+    const results = await brackets.find().toArray();
 
     return Response.json({ success: true, brackets: results });
   } catch (err) {

@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Container, Box, Stack, Button, Typography } from "@mui/material";
 import { useUser } from "../user-provider";
+import BracketCard from "../components/bracket-card";
+import generateSlug from "@/lib/slug";
 
 export default function Play() {
   const { user, setGuestMode } = useUser();
@@ -16,7 +18,7 @@ export default function Play() {
           method: "GET",
         });
         const data = await res.json();
-        setNewestBrackets(data.results);
+        setNewestBrackets(data.brackets);
       } catch (err) {
         console.error("Error fetching brackets:", err);
       } finally {
@@ -26,6 +28,21 @@ export default function Play() {
 
     fetchGameModes();
   }, []);
+
+  const handlePlayItem = async (item) => {
+    const payload = { bracketId: item._id };
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      console.log("TEST: ", data);
+      window.location.href = `/play/${data.slug}`;
+    } catch (err) {
+      console.error("Error generating game session: ", err);
+    }
+  };
 
   return (
     <Container>
@@ -44,7 +61,15 @@ export default function Play() {
           useFlexGap
           sx={{ flexWrap: "wrap" }}
         >
-          <Typography>{newestBrackets}</Typography>
+          {newestBrackets &&
+            newestBrackets.map((item, idx) => (
+              <BracketCard
+                id={item._id}
+                index={idx}
+                item={item}
+                onPlayItem={handlePlayItem}
+              ></BracketCard>
+            ))}
         </Stack>
       </Box>
     </Container>

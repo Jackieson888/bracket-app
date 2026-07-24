@@ -1,6 +1,6 @@
 import clientPromise from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
-import { generateSlug } from "@/lib/slug"; // your helper
+import generateSlug from "@/lib/slug";
 
 export async function POST(req: Request) {
   const session = await auth0.getSession();
