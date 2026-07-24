@@ -10,6 +10,7 @@ const theme = createTheme({
     fontFamily: "var(--font-roboto)",
   },
   palette: {
+    mode: "light",
     common: {
       black: "#0B1313",
       white: "#F4F4F4",
@@ -35,7 +36,7 @@ const theme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          background: "#162727",
+          background: "#123F3E",
         },
       },
     },
@@ -74,6 +75,24 @@ const theme = createTheme({
         root: {
           width: "100%",
           alignItems: "center",
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: "unset",
+          fontWeight: "bold",
+        },
+      },
+    },
+    MuiBadge: {
+      styleOverrides: {
+        badge: {
+          inset: "8px auto auto 8px",
+          color: "#123F3E",
+          background: "#B1CDC6",
+          fontWeight: "bold",
         },
       },
     },

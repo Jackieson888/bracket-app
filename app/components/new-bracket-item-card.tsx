@@ -4,7 +4,7 @@ import {
   styled,
   Stack,
   Box,
-  Button,
+  Typography,
   Card,
   CardContent,
   IconButton,
@@ -13,6 +13,7 @@ import {
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import { useState } from "react";
 import { Add } from "@mui/icons-material";
+import Image from "next/image";
 
 const HiddenInput = styled("input")({
   display: "none",
@@ -22,6 +23,26 @@ export default function NewBracketItemCard({ onAddItem }) {
   const [title, setTitle] = useState("");
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+
+  const handleFileSelect = (e) => {
+    const selected = e.target.files[0];
+    if (!selected) return;
+
+    setFile(selected);
+
+    // Create preview URL
+    const url = URL.createObjectURL(selected);
+    setPreviewUrl(url);
+
+    // Extract width/height
+    const img = new Image();
+    img.onload = () => {
+      setPreviewSize({ width: img.width, height: img.height });
+    };
+    img.src = url;
+  };
 
   const handleUpload = async (file) => {
     const formData = new FormData();
@@ -65,6 +86,7 @@ export default function NewBracketItemCard({ onAddItem }) {
     onAddItem(newItem);
 
     setTitle("");
+    setPreviewUrl(null);
     setFile(null);
   };
 
@@ -85,28 +107,39 @@ export default function NewBracketItemCard({ onAddItem }) {
           width: "stretch",
         }}
       >
-        <CardContent>
+        <CardContent sx={{ paddingY: 0 }}>
           <TextField
-            label="Title"
+            hiddenLabel
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             fullWidth
+            variant="standard"
           />
         </CardContent>
       </Box>
-      <IconButton component="label">
-        <CloudUploadIcon />
-        <HiddenInput type="file" onChange={(e) => setFile(e.target.files[0])} />
-      </IconButton>
+      {previewUrl && (
+        <Image
+          src={previewUrl}
+          alt={title}
+          width={previewSize.width}
+          height={previewSize.height}
+          style={{ width: "auto", height: 100, borderRadius: 8 }}
+        />
+      )}
       <Box
         sx={{
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
+          backgroundColor: "#E79F7F",
         }}
       >
+        <IconButton aria-label="upload" color="secondary" component="label">
+          <CloudUploadIcon />
+          <HiddenInput type="file" onChange={handleFileSelect} />
+        </IconButton>
         <IconButton
-          aria-label="delete"
+          aria-label="add"
           color="primary"
           onClick={handleSubmit}
           disabled={uploading}
@@ -114,44 +147,6 @@ export default function NewBracketItemCard({ onAddItem }) {
           <Add />
         </IconButton>
       </Box>
-      {/* <CardContent>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 1,
-            width: "24em",
-          }}
-        >
-          <Stack direction="row" spacing={1}>
-            <TextField
-              label="Title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              fullWidth
-            />
-
-            <IconButton component="label">
-              <CloudUploadIcon />
-              <HiddenInput
-                type="file"
-                onChange={(e) => setFile(e.target.files[0])}
-              />
-            </IconButton>
-          </Stack>
-
-          <Stack spacing={3}>
-            <Button
-              variant="contained"
-              size="small"
-              onClick={handleSubmit}
-              disabled={uploading}
-            >
-              {uploading ? "Uploading..." : "Add Bracket Item"}
-            </Button>
-          </Stack>
-        </Box>
-      </CardContent> */}
     </Card>
   );
 }

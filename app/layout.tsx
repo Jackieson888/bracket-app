@@ -26,7 +26,6 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
               <Container maxWidth="md">
                 <Box
                   sx={{
-                    my: 2,
                     display: "flex",
                     flexDirection: "column",
                     justifyContent: "center",

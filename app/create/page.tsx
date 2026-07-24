@@ -8,6 +8,8 @@ import {
   TextField,
   Badge,
   Grid,
+  Card,
+  CardContent,
 } from "@mui/material";
 import { useUser } from "../user-provider";
 import BracketItemCard from "../components/bracket-item-card";
@@ -111,23 +113,55 @@ export default function CreateBracketPage() {
           display: "flex",
           flexDirection: "column",
           gap: 2,
-          backgroundColor: "#162727",
+          padding: "8px",
         }}
       >
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <TextField
-            label="Bracket Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            fullWidth
-          />
-          <TextField
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            fullWidth
-          />
-        </Stack>
+        <Badge
+          badgeContent={"Bracket Name"}
+          anchorOrigin={{
+            vertical: "top",
+            horizontal: "left",
+          }}
+          color="primary"
+          sx={{
+            width: "100%",
+          }}
+          slotProps={{
+            badge: {
+              sx: {
+                marginLeft: "36px",
+              },
+            },
+          }}
+        >
+          <Card
+            sx={{
+              display: "flex",
+              maxHeight: "100px",
+              height: "70px",
+              width: "100%",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                width: "stretch",
+                paddingX: "16px",
+              }}
+            >
+              <TextField
+                hiddenLabel
+                value={title}
+                required
+                onChange={(e) => setTitle(e.target.value)}
+                fullWidth
+                variant="standard"
+              />
+            </Box>
+          </Card>
+        </Badge>
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -144,11 +178,12 @@ export default function CreateBracketPage() {
           >
             <Grid
               container
+              sx={{ maxHeight: "65vh", overflowY: "scroll" }}
               rowSpacing={{ xs: 1, sm: 2, md: 3 }}
               columnSpacing={{ xs: 1, sm: 2, md: 3 }}
             >
               {bracketItems.map((item, idx) => (
-                <Grid item xs={6} key={item.id}>
+                <Grid item size={{ xs: 12, sm: 6, md: 3 }} key={item.id}>
                   <Badge
                     badgeContent={idx + 1}
                     anchorOrigin={{
@@ -181,25 +216,57 @@ export default function CreateBracketPage() {
             ) : null}
           </DragOverlay>
         </DndContext>
+        <Badge
+          badgeContent={"New Item"}
+          anchorOrigin={{
+            vertical: "top",
+            horizontal: "left",
+          }}
+          color="primary"
+          sx={{
+            width: "100%",
+          }}
+          slotProps={{
+            badge: {
+              sx: {
+                marginLeft: "22px",
+              },
+            },
+          }}
+        >
+          <NewBracketItemCard onAddItem={handleAddItem} />
+        </Badge>
 
-        <NewBracketItemCard onAddItem={handleAddItem} />
+        <Stack direction="row" spacing={2} sx={{ justifyContent: "center" }}>
+          {user && (
+            <Button
+              fullWidth
+              variant="contained"
+              disabled={bracketItems.length < 4}
+              onClick={handleSaveBracket}
+              color="info"
+              sx={{
+                color: "#A73E26",
+              }}
+            >
+              Save Bracket
+            </Button>
+          )}
 
-        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-          <Button
-            variant="contained"
-            disabled={bracketItems.length < 4 || !user}
-            onClick={handleSaveBracket}
-          >
-            Save Bracket
-          </Button>
-
-          <Button
-            variant="contained"
-            disabled={bracketItems.length < 4}
-            onClick={handlePlayBracket}
-          >
-            Play Bracket
-          </Button>
+          {!user && (
+            <Button
+              fullWidth
+              variant="contained"
+              disabled={bracketItems.length < 4}
+              onClick={handlePlayBracket}
+              color="info"
+              sx={{
+                color: "#A73E26",
+              }}
+            >
+              Play Bracket
+            </Button>
+          )}
         </Stack>
 
         {editingIndex !== null && (

@@ -16,10 +16,12 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import { useState } from "react";
 import { useUser } from "../user-provider";
+import Image from "next/image";
 
 export default function NavBar() {
   const { user, setGuestMode } = useUser();
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
+  const [anchorElApp, setAnchorElApp] = useState<null | HTMLElement>(null);
 
   const handleOpenUserMenu = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorElUser(event.currentTarget);
@@ -29,24 +31,83 @@ export default function NavBar() {
     setAnchorElUser(null);
   };
 
+  const handleOpenAppMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorElApp(event.currentTarget);
+  };
+
+  const handleCloseAppMenu = () => {
+    setAnchorElApp(null);
+  };
+
   return (
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static">
-        <Toolbar>
-          <IconButton
-            size="large"
-            edge="start"
-            color="inherit"
-            aria-label="menu"
-            sx={{ mr: 2 }}
-          >
-            <MenuIcon />
-          </IconButton>
+        <Toolbar variant="dense">
+          <Box sx={{ flexGrow: 0 }}>
+            <IconButton
+              onClick={handleOpenAppMenu}
+              size="large"
+              edge="start"
+              color="inherit"
+              aria-label="menu"
+              sx={{ mr: 2 }}
+            >
+              <MenuIcon />
+            </IconButton>
 
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            [Bracket App]
-          </Typography>
-
+            <Menu
+              sx={{ mt: "45px" }}
+              id="menu-appbar"
+              anchorEl={anchorElApp}
+              anchorOrigin={{
+                vertical: "top",
+                horizontal: "right",
+              }}
+              keepMounted
+              transformOrigin={{
+                vertical: "top",
+                horizontal: "right",
+              }}
+              open={Boolean(anchorElApp)}
+              onClose={handleCloseAppMenu}
+            >
+              <MenuItem onClick={handleCloseAppMenu}>
+                <Button fullWidth variant="contained" size="large" href="/play">
+                  Play
+                </Button>
+              </MenuItem>
+              <MenuItem onClick={handleCloseAppMenu}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  href="/create"
+                >
+                  Create
+                </Button>
+              </MenuItem>
+              {user && (
+                <MenuItem onClick={handleCloseAppMenu}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    size="large"
+                    href="/my-brackets"
+                  >
+                    My Brackets
+                  </Button>
+                </MenuItem>
+              )}
+            </Menu>
+          </Box>
+          <Box sx={{ width: "stretch" }}>
+            <Image
+              src="/TvT_Logo.svg"
+              alt="This vs That"
+              width={250}
+              height={40}
+            />
+          </Box>
           {!user && (
             <Stack direction="row" spacing={2}>
               <Button

@@ -14,7 +14,6 @@ export async function POST(req: Request) {
 
     const doc = {
       title: body.title,
-      description: body.description,
       items: body.items,
       user: user,
       createdAt: new Date(),
@@ -26,5 +25,23 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("Error saving bracket:", err);
     return Response.json({ error: "Failed to save bracket" }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const client = await clientPromise;
+    const db = client.db("test");
+    const brackets = db.collection("brackets");
+
+    const results = await brackets.find();
+
+    return Response.json({ success: true, brackets: results });
+  } catch (err) {
+    console.error("Error getting bracket:", err);
+    return Response.json(
+      { error: "Failed to fetch brackets" },
+      { status: 500 },
+    );
   }
 }
