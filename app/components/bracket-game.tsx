@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Box, Button, Typography, Stack } from "@mui/material";
 
-export default function BracketGame({ bracket, slug }) {
+export default function BracketGame({ bracket, slug, session }) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
   const [currentRoundItems, setCurrentRoundItems] = useState(bracket.items);
