@@ -35,6 +35,7 @@ import {
 
 type BracketItem = {
   id: string;
+  title: string;
   [key: string]: unknown;
 };
 
@@ -51,11 +52,20 @@ export default function CreateBracketPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
 
+  const activeItem =
+    activeId !== null
+      ? bracketItems.find((item) => item.id === activeId)
+      : null;
+  const activeItemIndex =
+    activeItem !== null
+      ? bracketItems.findIndex((item) => item.id === activeId)
+      : -1;
+
   const handleEditItem = (index: SetStateAction<number | null>) => {
     setEditingIndex(index);
   };
 
-  const handleUpdateItem = (updatedItem: any) => {
+  const handleUpdateItem = (updatedItem: BracketItem) => {
     setBracketItems((prev) =>
       prev.map((item, i) => (i === editingIndex ? updatedItem : item)),
     );
@@ -73,8 +83,8 @@ export default function CreateBracketPage() {
     }),
   );
 
-  const handleAddItem = (item: any) => {
-    const newItem = { ...item, id: crypto.randomUUID() };
+  const handleAddItem = (item: Omit<BracketItem, "id">) => {
+    const newItem = { ...item, id: crypto.randomUUID() } as BracketItem;
     setBracketItems((prev) => [...prev, newItem]);
   };
 
@@ -187,7 +197,7 @@ export default function CreateBracketPage() {
               columnSpacing={{ xs: 1, sm: 2, md: 3 }}
             >
               {bracketItems.map((item, idx) => (
-                <Grid component="div" item xs={12} sm={6} md={3} key={item.id}>
+                <Grid key={item.id}>
                   <Badge
                     badgeContent={idx + 1}
                     anchorOrigin={{
@@ -214,7 +224,11 @@ export default function CreateBracketPage() {
           <DragOverlay>
             {activeId ? (
               <BracketItemCard
+                id={activeId}
+                index={activeItemIndex}
                 item={bracketItems.find((i) => i.id === activeId)!}
+                onDeleteItem={() => {}}
+                onEditItem={() => {}}
                 isOverlay
               />
             ) : null}
@@ -276,7 +290,15 @@ export default function CreateBracketPage() {
             open={editingIndex !== null}
             item={bracketItems[editingIndex]}
             onClose={() => setEditingIndex(null)}
-            onSave={handleUpdateItem}
+            onSave={(item) => {
+              if (item !== null && editingIndex !== null) {
+                handleUpdateItem({
+                  ...item,
+                  id: bracketItems[editingIndex].id,
+                  title: item.title ?? "",
+                });
+              }
+            }}
           />
         )}
       </Box>

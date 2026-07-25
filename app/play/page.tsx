@@ -9,7 +9,7 @@ interface item {
   _id: string;
   title: string;
   user: { name: string; picture: string };
-  items?: unknown[];
+  items: unknown[];
 }
 
 export default function Play() {
