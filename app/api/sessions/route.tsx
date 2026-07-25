@@ -14,7 +14,7 @@ export async function POST(req: Request) {
 
   const doc = {
     slug,
-    bracketId: body.bracketId,
+    bracket: body,
     hostUserId: session?.user?.sub ?? null,
     joinedUserIds: [session?.user?.sub].filter(Boolean),
     createdAt: new Date(),

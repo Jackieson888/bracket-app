@@ -12,26 +12,17 @@ export default function PlayBracketGame({ slug }) {
     fetch(`/api/sessions/${slug}`)
       .then((res) => res.json())
       .then((data) => {
+        console.log("SESSION LOADED:", data);
         setSession(data);
       })
       .catch(console.error);
   }, [slug]);
 
-  // 2. Fetch the bracket once session is loaded
-  useEffect(() => {
-    if (!session?.bracketId) return;
-
-    fetch(`/api/brackets/${session.bracketId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setBracket(data);
-      })
-      .catch(console.error);
-  }, [session]);
-
-  if (!session || !bracket) {
-    return <div>Loading game...</div>;
+  if (!session || !session.bracket) {
+    return <div>Loading session...</div>;
   }
 
-  return <BracketGame bracket={bracket} slug={slug} session={session} />;
+  return (
+    <BracketGame bracket={session.bracket} slug={slug} session={session} />
+  );
 }

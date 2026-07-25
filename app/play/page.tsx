@@ -12,7 +12,7 @@ export default function Play() {
   const [newestBrackets, setNewestBrackets] = useState([]);
 
   useEffect(() => {
-    async function fetchGameModes() {
+    async function fetchBrackets() {
       try {
         const res = await fetch("/api/brackets", {
           method: "GET",
@@ -26,11 +26,11 @@ export default function Play() {
       }
     }
 
-    fetchGameModes();
+    fetchBrackets();
   }, []);
 
   const handlePlayItem = async (item) => {
-    const payload = { bracketId: item._id };
+    const payload = item;
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
