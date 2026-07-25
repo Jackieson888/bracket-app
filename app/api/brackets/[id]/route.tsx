@@ -1,4 +1,5 @@
 import clientPromise from "@/lib/mongodb";
+import { ObjectId } from "mongodb";
 import { NextRequest } from "next/server";
 
 interface Params {
@@ -19,7 +20,9 @@ export async function GET(
 
   const { id } = await params;
 
-  const result = await brackets.findOne({ _id: id });
+  const result = await brackets.findOne({
+    _id: new ObjectId(id),
+  });
 
   return Response.json(result);
 }
