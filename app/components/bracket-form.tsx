@@ -17,7 +17,8 @@ export default function BracketForm() {
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [subtitle, setSubtitle] = useState("");
-  const { user } = useUser();
+  const userContext = useUser();
+  const { user } = userContext || { user: null };
 
   const handleSubmit = async () => {
     const payload = {

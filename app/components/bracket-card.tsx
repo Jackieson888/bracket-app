@@ -12,7 +12,16 @@ import { Avatar } from "@mui/material";
 import { IconButton, Stack } from "@mui/material";
 import { PlayArrow } from "@mui/icons-material";
 
-export default function BracketCard({ item, index, id, onPlayItem }) {
+interface BracketItem {
+  title: string;
+  user: {
+    name: string;
+    picture: string;
+  };
+  items: unknown[];
+}
+
+export default function BracketCard({ item, index, id, onPlayItem }: { item: BracketItem; index: number; id: string | number; onPlayItem: (item: BracketItem) => void }) {
   const [open, setOpen] = useState(false);
 
   const {
@@ -24,8 +33,8 @@ export default function BracketCard({ item, index, id, onPlayItem }) {
     isDragging,
   } = useSortable({
     id,
-    animateLayoutChanges: ({ isSorting, wasSorting }) =>
-      isSorting || wasSorting,
+    animateLayoutChanges: ({ isSorting, wasDragging }) =>
+      isSorting || wasDragging,
   });
 
   const style = {

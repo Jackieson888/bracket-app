@@ -1,24 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, type ComponentProps } from "react";
 import { Box, Button, Typography, Stack, Container } from "@mui/material";
 import GameItemCard from "./game-item-card";
 import { RoundTransition } from "./round-transition";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function BracketGame({ bracket, slug, session }) {
+type Item = ComponentProps<typeof GameItemCard>["item"];
+
+type BracketGameProps = {
+  bracket?: {
+    items?: Item[];
+  };
+  slug?: string;
+  session?: unknown;
+};
+
+export default function BracketGame({
+  bracket,
+  slug,
+  session,
+}: BracketGameProps) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
-  const [currentRoundItems, setCurrentRoundItems] = useState([]);
+  const [currentRoundItems, setCurrentRoundItems] = useState<Item[]>(
+    () => bracket?.items ?? [],
+  );
 
-  useEffect(() => {
-    if (bracket?.items) {
-      setCurrentRoundItems(bracket.items);
-    }
-  }, [bracket]);
-
-  function buildNextRound(items) {
-    const winners = [];
+  function buildNextRound(items: Item[]) {
+    const winners: Item[] = [];
 
     for (let i = 0; i < items.length; i += 2) {
       const left = items[i];
@@ -36,7 +46,7 @@ export default function BracketGame({ bracket, slug, session }) {
     return winners;
   }
 
-  const handleVote = (winnerIndex) => {
+  const handleVote = ({ index }: { item: Item; index: number }) => {
     const nextMatch = currentMatch + 1;
 
     // FINAL ROUND: only 2 items left
@@ -44,7 +54,7 @@ export default function BracketGame({ bracket, slug, session }) {
       // Ensure we are on the first (and only) match
       setCurrentMatch(0);
 
-      const winner = currentRoundItems[winnerIndex];
+      const winner = currentRoundItems[index];
       setCurrentRoundItems([winner]);
       return;
     }

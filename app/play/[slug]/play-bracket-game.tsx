@@ -3,15 +3,19 @@
 import { useState, useEffect } from "react";
 import BracketGame from "@/app/components/bracket-game";
 
-export default function PlayBracketGame({ slug }) {
-  const [session, setSession] = useState(null);
-  const [bracket, setBracket] = useState(null);
+type Session = {
+  bracket: unknown;
+  [key: string]: unknown;
+};
+
+export default function PlayBracketGame({ slug }: { slug: string }) {
+  const [session, setSession] = useState<Session | null>(null);
 
   // 1. Fetch the session
   useEffect(() => {
     fetch(`/api/sessions/${slug}`)
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: Session) => {
         console.log("SESSION LOADED:", data);
         setSession(data);
       })

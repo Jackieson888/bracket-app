@@ -1,10 +1,18 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
-const UserContext = createContext(null);
+interface UserProviderProps {
+  user?: unknown;
+  children: ReactNode;
+}
 
-export default function UserProvider({ user, children }) {
+const UserContext = createContext<{
+  user: unknown | null;
+  setGuestMode: React.Dispatch<React.SetStateAction<boolean>>;
+} | null>(null);
+
+export default function UserProvider({ user, children }: UserProviderProps) {
   const [guestMode, setGuestMode] = useState(false);
 
   const effectiveUser = user ?? (guestMode ? { guest: true } : null);

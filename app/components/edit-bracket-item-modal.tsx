@@ -1,18 +1,32 @@
 "use client";
 
 import { Modal, Box, TextField, Button } from "@mui/material";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 
-export default function EditBracketItemModal({ open, item, onClose, onSave }) {
-  const [title, setTitle] = useState("");
+type Item = {
+  title?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+  [key: string]: unknown;
+};
 
-  useEffect(() => {
-    if (item) setTitle(item.title);
-  }, [item]);
+export default function EditBracketItemModal({
+  open,
+  item,
+  onClose,
+  onSave,
+}: {
+  open: boolean;
+  item?: Item | null;
+  onClose: () => void;
+  onSave: (item: Item | null) => void;
+}) {
+  const [title, setTitle] = useState<string>(item?.title ?? "");
 
   const handleSave = () => {
-    onSave({ ...item, title });
+    onSave({ ...(item ?? {}), title });
   };
 
   return (
@@ -35,12 +49,12 @@ export default function EditBracketItemModal({ open, item, onClose, onSave }) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
-        {item.url && (
+        {item?.url && (
           <Image
             src={item.url}
-            alt={item.title}
-            width={item.width}
-            height={item.height}
+            alt={item?.title ?? ""}
+            width={item?.width}
+            height={item?.height}
             style={{ width: "auto", height: "auto", borderRadius: 8 }}
           />
         )}

@@ -3,7 +3,13 @@
 import { Modal, Box } from "@mui/material";
 import Image from "next/image";
 
-export default function MediaModal({ open, onClose, item }) {
+interface MediaModalProps {
+  open: boolean;
+  onClose: () => void;
+  item: { url: string; title: string; width?: number; height?: number } | null;
+}
+
+export default function MediaModal({ open, onClose, item }: MediaModalProps) {
   if (!item) return null;
 
   const isImage = item.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i);

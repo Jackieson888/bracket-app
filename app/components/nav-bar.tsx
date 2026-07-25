@@ -19,7 +19,8 @@ import { useUser } from "../user-provider";
 import Image from "next/image";
 
 export default function NavBar() {
-  const { user, setGuestMode } = useUser();
+  const userContext = useUser() as { user: { name?: string; picture?: string } | null } | null;
+  const { user } = userContext || { user: null };
   const [anchorElUser, setAnchorElUser] = useState<null | HTMLElement>(null);
   const [anchorElApp, setAnchorElApp] = useState<null | HTMLElement>(null);
 
@@ -125,8 +126,8 @@ export default function NavBar() {
 
           {user && (
             <Box sx={{ flexGrow: 0 }}>
-              <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
-                <Avatar alt={user.name} src={user.picture} />
+                <IconButton onClick={handleOpenUserMenu} sx={{ p: 0 }}>
+                <Avatar alt={user.name ?? ""} src={user.picture ?? undefined} />
               </IconButton>
 
               <Menu

@@ -4,7 +4,8 @@ import { Container, Box, Stack, Button } from "@mui/material";
 import { useUser } from "./user-provider";
 
 export default function Home() {
-  const { user, setGuestMode } = useUser();
+  const userContext = useUser();
+  const { user } = userContext || { user: null };
   return (
     <Container>
       <Box
@@ -25,11 +26,11 @@ export default function Home() {
           <Button fullWidth variant="contained" size="large" href="/create">
             Create New Bracket
           </Button>
-          {user && (
+          {user ? (
             <Button fullWidth variant="contained" size="large">
               My Brackets
             </Button>
-          )}
+          ) : null}
           <Button fullWidth variant="contained" size="large">
             Find Bracket
           </Button>

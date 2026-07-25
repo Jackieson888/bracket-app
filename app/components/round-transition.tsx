@@ -1,8 +1,14 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
+import type { ReactNode } from "react";
 
-export function RoundTransition({ round, children }) {
+interface RoundTransitionProps {
+  round: string | number;
+  children: ReactNode;
+}
+
+export function RoundTransition({ round, children }: RoundTransitionProps) {
   return (
     <AnimatePresence mode="wait">
       <motion.div

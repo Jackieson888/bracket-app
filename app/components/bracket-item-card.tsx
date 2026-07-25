@@ -13,6 +13,13 @@ import Image from "next/image";
 import { IconButton } from "@mui/material";
 import { Delete, Edit } from "@mui/icons-material";
 
+interface item {
+  title: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
 export default function BracketItemCard({
   item,
   index,
@@ -20,6 +27,13 @@ export default function BracketItemCard({
   onDeleteItem,
   onEditItem,
   isOverlay,
+}: {
+  item: item;
+  index: number;
+  id: string | number;
+  onDeleteItem: (index: number) => void;
+  onEditItem: (index: number) => void;
+  isOverlay?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -32,8 +46,8 @@ export default function BracketItemCard({
     isDragging,
   } = useSortable({
     id,
-    animateLayoutChanges: ({ isSorting, wasSorting }) =>
-      isSorting || wasSorting,
+    animateLayoutChanges: ({ isSorting, wasDragging }) =>
+      isSorting || wasDragging,
   });
 
   const style = {
@@ -116,7 +130,13 @@ export default function BracketItemCard({
         </Box>
       </Card>
 
-      <MediaModal open={open} onClose={() => setOpen(false)} item={item} />
+      {item.url && (
+        <MediaModal
+          open={open}
+          onClose={() => setOpen(false)}
+          item={item as { url: string; title: string; width?: number; height?: number }}
+        />
+      )}
     </>
   );
 }

@@ -1,13 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Container, Box, Stack, Button, Typography } from "@mui/material";
+import { Container, Box, Stack } from "@mui/material";
 import { useUser } from "../user-provider";
 import BracketCard from "../components/bracket-card";
-import generateSlug from "@/lib/slug";
+
+interface item {
+  _id: string;
+  title: string;
+  user: { name: string; picture: string };
+  items?: unknown[];
+}
 
 export default function Play() {
-  const { user, setGuestMode } = useUser();
+  const userContext = useUser();
+  const { user } = userContext || { user: null };
   const [loading, setLoading] = useState(true);
   const [newestBrackets, setNewestBrackets] = useState([]);
 
@@ -29,7 +36,7 @@ export default function Play() {
     fetchBrackets();
   }, []);
 
-  const handlePlayItem = async (item) => {
+  const handlePlayItem = async (item: unknown) => {
     const payload = item;
     try {
       const res = await fetch("/api/sessions", {
@@ -62,8 +69,9 @@ export default function Play() {
           sx={{ flexWrap: "wrap" }}
         >
           {newestBrackets &&
-            newestBrackets.map((item, idx) => (
+            newestBrackets.map((item: item, idx: number) => (
               <BracketCard
+                key={item._id}
                 id={item._id}
                 index={idx}
                 item={item}

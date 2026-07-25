@@ -9,13 +9,12 @@ import {
   Badge,
   Grid,
   Card,
-  CardContent,
 } from "@mui/material";
 import { useUser } from "../user-provider";
 import BracketItemCard from "../components/bracket-item-card";
 import NewBracketItemCard from "../components/new-bracket-item-card";
 import EditBracketItemModal from "../components/edit-bracket-item-modal";
-import { useState, useEffect } from "react";
+import { useState, useEffect, SetStateAction } from "react";
 
 import {
   DndContext,
@@ -24,6 +23,8 @@ import {
   useSensor,
   useSensors,
   DragOverlay,
+  DragEndEvent,
+  UniqueIdentifier,
 } from "@dnd-kit/core";
 
 import {
@@ -32,31 +33,34 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 
+type BracketItem = {
+  id: string;
+  [key: string]: unknown;
+};
+
 export default function CreateBracketPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const { user } = useUser();
+  const userContext = useUser();
+  const { user } = userContext || { user: null };
 
-  const [bracketItems, setBracketItems] = useState([]);
-  const [editingIndex, setEditingIndex] = useState(null);
-  const [activeId, setActiveId] = useState(null);
+  const [bracketItems, setBracketItems] = useState<BracketItem[]>(() => {
+    const stored = localStorage.getItem("bracketItems");
+    return stored ? JSON.parse(stored) : [];
+  });
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
 
-  const handleEditItem = (index) => {
+  const handleEditItem = (index: SetStateAction<number | null>) => {
     setEditingIndex(index);
   };
 
-  const handleUpdateItem = (updatedItem) => {
+  const handleUpdateItem = (updatedItem: any) => {
     setBracketItems((prev) =>
       prev.map((item, i) => (i === editingIndex ? updatedItem : item)),
     );
     setEditingIndex(null);
   };
-
-  // Load from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem("bracketItems");
-    if (stored) setBracketItems(JSON.parse(stored));
-  }, []);
 
   // Save to localStorage
   useEffect(() => {
@@ -69,16 +73,16 @@ export default function CreateBracketPage() {
     }),
   );
 
-  const handleAddItem = (item) => {
+  const handleAddItem = (item: any) => {
     const newItem = { ...item, id: crypto.randomUUID() };
     setBracketItems((prev) => [...prev, newItem]);
   };
 
-  const handleDeleteItem = (index) => {
+  const handleDeleteItem = (index: number) => {
     setBracketItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -183,7 +187,7 @@ export default function CreateBracketPage() {
               columnSpacing={{ xs: 1, sm: 2, md: 3 }}
             >
               {bracketItems.map((item, idx) => (
-                <Grid item size={{ xs: 12, sm: 6, md: 3 }} key={item.id}>
+                <Grid component="div" item xs={12} sm={6} md={3} key={item.id}>
                   <Badge
                     badgeContent={idx + 1}
                     anchorOrigin={{
@@ -210,7 +214,7 @@ export default function CreateBracketPage() {
           <DragOverlay>
             {activeId ? (
               <BracketItemCard
-                item={bracketItems.find((i) => i.id === activeId)}
+                item={bracketItems.find((i) => i.id === activeId)!}
                 isOverlay
               />
             ) : null}
@@ -238,7 +242,7 @@ export default function CreateBracketPage() {
         </Badge>
 
         <Stack direction="row" spacing={2} sx={{ justifyContent: "center" }}>
-          {user && (
+          {user ? (
             <Button
               fullWidth
               variant="contained"
@@ -251,9 +255,7 @@ export default function CreateBracketPage() {
             >
               Save Bracket
             </Button>
-          )}
-
-          {!user && (
+          ) : (
             <Button
               fullWidth
               variant="contained"

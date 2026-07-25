@@ -2,16 +2,14 @@
 
 import {
   styled,
-  Stack,
   Box,
-  Typography,
   Card,
   CardContent,
   IconButton,
   TextField,
 } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
-import { useState } from "react";
+import React, { useState } from "react";
 import { Add } from "@mui/icons-material";
 import Image from "next/image";
 
@@ -19,15 +17,29 @@ const HiddenInput = styled("input")({
   display: "none",
 });
 
-export default function NewBracketItemCard({ onAddItem }) {
-  const [title, setTitle] = useState("");
-  const [file, setFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
+type BracketItem = {
+  title: string;
+  url?: string;
+  width?: number;
+  height?: number;
+};
 
-  const handleFileSelect = (e) => {
-    const selected = e.target.files[0];
+export default function NewBracketItemCard({
+  onAddItem,
+}: {
+  onAddItem: (item: BracketItem) => void;
+}) {
+  const [title, setTitle] = useState<string>("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewSize, setPreviewSize] = useState<{
+    width: number;
+    height: number;
+  }>({ width: 0, height: 0 });
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
     if (!selected) return;
 
     setFile(selected);
@@ -37,14 +49,14 @@ export default function NewBracketItemCard({ onAddItem }) {
     setPreviewUrl(url);
 
     // Extract width/height
-    const img = new Image();
+    const img = new window.Image();
     img.onload = () => {
       setPreviewSize({ width: img.width, height: img.height });
     };
     img.src = url;
   };
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (file: string | Blob) => {
     const formData = new FormData();
     formData.append("file", file);
 
