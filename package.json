@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",
@@ -51,6 +51,13 @@
     "esbuild@0.28.1": true,
     "esbuild@0.25.12": true,
     "core-js@3.49.0": true,
-    "core-js@2.6.12": true
+    "core-js@2.6.12": true,
+    "es5-ext@0.10.64": true
+  },
+  "overrides": {
+    "@opentelemetry/core": "2.10.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/sdk-trace-base": "2.10.0",
+    "@opentelemetry/sdk-trace": "2.10.0"
   }
 }
