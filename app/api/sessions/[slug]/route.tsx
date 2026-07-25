@@ -1,6 +1,19 @@
 import clientPromise from "@/lib/mongodb";
 
-export async function GET(_req: Request, { params }) {
+import { NextRequest } from "next/server";
+
+interface Params {
+  slug: string;
+}
+
+interface RouteContext {
+  params: Promise<Params>;
+}
+
+export async function GET(
+  _req: NextRequest,
+  { params }: RouteContext,
+): Promise<Response> {
   try {
     const client = await clientPromise;
     const db = client.db("test");
