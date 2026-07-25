@@ -43,5 +43,14 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.1",
     "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "@parcel/watcher@2.6.0": true,
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.12.2": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.25.12": true,
+    "core-js@3.49.0": true,
+    "core-js@2.6.12": true
   }
 }
