@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, type ComponentProps } from "react";
-import { Box, Button, Typography, Stack, Container } from "@mui/material";
+import { Box, Typography, Stack, Container } from "@mui/material";
 import GameItemCard from "./game-item-card";
-import { RoundTransition } from "./round-transition";
-import { motion, AnimatePresence } from "framer-motion";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
 
@@ -91,62 +89,37 @@ export default function BracketGame({
         }}
       >
         {currentRoundItems.length === 1 && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.4 }}
-            style={{ textAlign: "center", marginTop: "2rem" }}
-          >
-            <h1>
-              Winner: <pre>{JSON.stringify(currentRoundItems)}</pre>
-            </h1>
-          </motion.div>
+          <h1>
+            Winner: <pre>{JSON.stringify(currentRoundItems)}</pre>
+          </h1>
         )}
         {currentRoundItems.length > 1 && (
-          <RoundTransition round={round}>
-            <Box sx={{ textAlign: "center", mt: 4 }}>
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Typography variant="h4">Round {round + 1}</Typography>
-              </motion.div>
+          <Box sx={{ textAlign: "center", mt: 4 }}>
+            <Typography variant="h4">Round {round + 1}</Typography>
 
-              <Stack
-                spacing={4}
-                sx={{ justifyContent: "center", marginTop: "4px" }}
-              >
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={currentMatch}
-                    initial={{ opacity: 0, x: 40 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -40 }}
-                    transition={{ duration: 0.25 }}
-                  >
-                    <GameItemCard
-                      item={left}
-                      index={currentMatch * 2}
-                      handleVote={handleVote}
-                    />
+            <Stack
+              spacing={4}
+              sx={{ justifyContent: "center", marginTop: "4px" }}
+            >
+              <GameItemCard
+                item={left}
+                index={currentMatch * 2}
+                handleVote={handleVote}
+              />
 
-                    <Typography variant="h5">vs</Typography>
+              <Typography variant="h5">vs</Typography>
 
-                    {right ? (
-                      <GameItemCard
-                        item={right}
-                        index={currentMatch * 2 + 1}
-                        handleVote={handleVote}
-                      />
-                    ) : (
-                      <Typography variant="h6">Bye</Typography>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              </Stack>
-            </Box>
-          </RoundTransition>
+              {right ? (
+                <GameItemCard
+                  item={right}
+                  index={currentMatch * 2 + 1}
+                  handleVote={handleVote}
+                />
+              ) : (
+                <Typography variant="h6">Bye</Typography>
+              )}
+            </Stack>
+          </Box>
         )}
       </Box>
     </Container>
