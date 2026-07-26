@@ -1,9 +1,9 @@
 import clientPromise from "@/lib/mongodb";
-import { getAuth0 } from "@/lib/auth0";
+import { auth0 } from "@/lib/auth0";
 import generateSlug from "@/lib/slug";
 
 export async function POST(req: Request) {
-  const session = await getAuth0().getSession();
+  const session = await auth0.getSession();
   const body = await req.json(); // { bracketId }
 
   const client = await clientPromise;

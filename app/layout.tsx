@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getAuth0 } from "../lib/auth0";
+import { auth0 } from "@/lib/auth0";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -15,7 +15,7 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
   try {
     // Only attempt to initialize Auth0 when required environment variables are present.
     if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID) {
-      const session = await getAuth0().getSession();
+      const session = await auth0.getSession();
       user = session?.user ?? null;
     }
   } catch (e) {
