@@ -1,5 +1,5 @@
 import * as React from "react";
-import { auth0 } from "@/lib/auth0";
+import { getAuth0 } from "../lib/auth0";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -11,7 +11,7 @@ import { Container, Box } from "@mui/material";
 import NavBar from "./components/nav-bar";
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
-  const session = await auth0.getSession();
+  const session = await getAuth0().getSession();
   const user = session?.user ?? null;
 
   return (
