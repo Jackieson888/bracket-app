@@ -46,6 +46,7 @@ export default function CreateBracketPage() {
   const { user } = userContext || { user: null };
 
   const [bracketItems, setBracketItems] = useState<BracketItem[]>(() => {
+    if (typeof window === "undefined") return [];
     const stored = localStorage.getItem("bracketItems");
     return stored ? JSON.parse(stored) : [];
   });

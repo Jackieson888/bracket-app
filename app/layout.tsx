@@ -11,8 +11,17 @@ import { Container, Box } from "@mui/material";
 import NavBar from "./components/nav-bar";
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
-  const session = await getAuth0().getSession();
-  const user = session?.user ?? null;
+  let user = null;
+  try {
+    // Only attempt to initialize Auth0 when required environment variables are present.
+    if (process.env.AUTH0_DOMAIN && process.env.AUTH0_CLIENT_ID) {
+      const session = await getAuth0().getSession();
+      user = session?.user ?? null;
+    }
+  } catch (e) {
+    // If anything goes wrong (including during prerender), fall back to null user.
+    user = null;
+  }
 
   return (
     <html lang="en" suppressHydrationWarning>
