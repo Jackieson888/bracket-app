@@ -1,10 +1,5 @@
 import { v2 as cloudinary } from "cloudinary";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
+import { getCloudinaryConfig } from "@/lib/runtime-config";
 
 export async function POST(req: Request) {
   try {
@@ -15,12 +10,19 @@ export async function POST(req: Request) {
       return Response.json({ error: "No file uploaded" }, { status: 400 });
     }
 
+    const cloudinaryConfig = getCloudinaryConfig();
+
+    if (!cloudinaryConfig) {
+      return Response.json(
+        { error: "Cloudinary is not configured for this environment" },
+        { status: 500 },
+      );
+    }
+
+    cloudinary.config(cloudinaryConfig);
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-
-    const upload = await cloudinary.uploader.upload_stream({
-      folder: "bracket-items",
-    });
 
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(

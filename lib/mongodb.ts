@@ -1,24 +1,42 @@
 import { MongoClient } from "mongodb";
+import { getRequiredEnvVar } from "./runtime-config";
 
-const uri = process.env.MONGODB_URI!;
 const options = {};
 
-let client;
-let clientPromise: Promise<MongoClient>;
+let client: MongoClient | undefined;
+let clientPromise: Promise<MongoClient> | undefined;
 
-if (!process.env.MONGODB_URI) {
-  throw new Error("Missing MONGODB_URI");
-}
+function getMongoClientPromise(): Promise<MongoClient> {
+  if (!clientPromise) {
+    const uri = getRequiredEnvVar("MONGODB_URI");
 
-if (process.env.NODE_ENV === "development") {
-  if (!(global as any)._mongoClientPromise) {
-    client = new MongoClient(uri, options);
-    (global as any)._mongoClientPromise = client.connect();
+    if (process.env.NODE_ENV === "development") {
+      if (
+        !(
+          global as typeof globalThis & {
+            _mongoClientPromise?: Promise<MongoClient>;
+          }
+        )._mongoClientPromise
+      ) {
+        client = new MongoClient(uri, options);
+        (
+          global as typeof globalThis & {
+            _mongoClientPromise?: Promise<MongoClient>;
+          }
+        )._mongoClientPromise = client.connect();
+      }
+      clientPromise = (
+        global as typeof globalThis & {
+          _mongoClientPromise?: Promise<MongoClient>;
+        }
+      )._mongoClientPromise;
+    } else {
+      client = new MongoClient(uri, options);
+      clientPromise = client.connect();
+    }
   }
-  clientPromise = (global as any)._mongoClientPromise;
-} else {
-  client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+
+  return clientPromise!;
 }
 
-export default clientPromise;
+export default getMongoClientPromise();
