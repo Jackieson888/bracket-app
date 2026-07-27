@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
-import { Box, Typography, Stack, Container } from "@mui/material";
+import { useEffect, useState, type ComponentProps } from "react";
+import { Box, Typography, Stack, Container, Chip } from "@mui/material";
 import GameItemCard from "./game-item-card";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
@@ -12,18 +12,41 @@ type BracketGameProps = {
   };
   slug?: string;
   session?: unknown;
+  roomState?: {
+    round?: number;
+    currentMatch?: number;
+    currentRoundItems?: Item[];
+    votes?: Record<string, number>;
+    pendingVoteCount?: number;
+  };
+  onVote?: (payload: { round: number; match: number; choice: number }) => void;
 };
 
 export default function BracketGame({
   bracket,
   slug,
   session,
+  roomState,
+  onVote,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
   const [currentRoundItems, setCurrentRoundItems] = useState<Item[]>(
     () => bracket?.items ?? [],
   );
+  const [voteSummary, setVoteSummary] = useState<string>("Waiting for votes");
+
+  useEffect(() => {
+    if (roomState?.currentRoundItems?.length) {
+      setCurrentRoundItems(roomState.currentRoundItems);
+    }
+    if (typeof roomState?.round === "number") {
+      setRound(roomState.round);
+    }
+    if (typeof roomState?.currentMatch === "number") {
+      setCurrentMatch(roomState.currentMatch);
+    }
+  }, [roomState]);
 
   function buildNextRound(items: Item[]) {
     const winners: Item[] = [];
@@ -33,47 +56,43 @@ export default function BracketGame({
       const right = items[i + 1];
 
       if (!right) {
-        winners.push(left); // bye
+        winners.push(left);
         continue;
       }
 
-      const winner = Math.random() < 0.5 ? left : right;
-      winners.push(winner);
+      winners.push(left);
     }
 
     return winners;
   }
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
-    const nextMatch = currentMatch + 1;
-
-    // FINAL ROUND: only 2 items left
-    if (currentRoundItems.length === 2) {
-      // Ensure we are on the first (and only) match
-      setCurrentMatch(0);
-
-      const winner = currentRoundItems[index];
-      setCurrentRoundItems([winner]);
+    if (!onVote) {
       return;
     }
 
-    if (nextMatch >= Math.floor(currentRoundItems.length / 2)) {
-      const nextRoundItems = buildNextRound(currentRoundItems);
+    const votePayload = {
+      round,
+      match: currentMatch,
+      choice: index,
+    };
 
-      console.log("NEXT ROUND ITEMS:", nextRoundItems);
-
-      setCurrentRoundItems(nextRoundItems);
-      setRound(round + 1);
-
-      // ALWAYS reset match index when entering a new round
-      setCurrentMatch(0);
-
-      return;
-    }
-
-    // NORMAL MATCH ADVANCE
-    setCurrentMatch(nextMatch);
+    onVote(votePayload);
   };
+
+  useEffect(() => {
+    if (currentRoundItems.length <= 1) {
+      setVoteSummary("Final winner selected");
+      return;
+    }
+
+    const totalVotes = roomState?.pendingVoteCount ?? 0;
+    setVoteSummary(
+      totalVotes >= 2
+        ? "Both players have voted. Moving to the next matchup."
+        : `Waiting for ${Math.max(0, 2 - totalVotes)} more vote${Math.max(0, 2 - totalVotes) === 1 ? "" : "s"}`,
+    );
+  }, [currentRoundItems.length, roomState?.pendingVoteCount]);
 
   const left = currentRoundItems[currentMatch * 2];
   const right = currentRoundItems[currentMatch * 2 + 1];
@@ -88,10 +107,19 @@ export default function BracketGame({
           padding: "8px",
         }}
       >
+        <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <Chip label={`Room ${slug ?? "unknown"}`} color="primary" />
+          <Chip label={voteSummary} />
+        </Box>
         {currentRoundItems.length === 1 && (
-          <h1>
-            Winner: <pre>{JSON.stringify(currentRoundItems)}</pre>
-          </h1>
+          <Box sx={{ textAlign: "center", mt: 4 }}>
+            <Typography variant="h4">Winner</Typography>
+            <GameItemCard
+              item={currentRoundItems[0]}
+              index={0}
+              handleVote={null as any}
+            />
+          </Box>
         )}
         {currentRoundItems.length > 1 && (
           <Box sx={{ textAlign: "center", mt: 4 }}>

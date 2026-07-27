@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Container, Box, Stack } from "@mui/material";
+import {
+  Container,
+  Box,
+  Stack,
+  TextField,
+  Divider,
+  Button,
+  Typography,
+} from "@mui/material";
 import { useUser } from "../user-provider";
 import BracketCard from "../components/bracket-card";
 
-interface item {
+interface Item {
   _id: string;
   title: string;
   user: { name: string; picture: string };
@@ -16,7 +24,9 @@ export default function Play() {
   const userContext = useUser();
   const { user } = userContext || { user: null };
   const [loading, setLoading] = useState(true);
-  const [newestBrackets, setNewestBrackets] = useState([]);
+  const [slug, setSlug] = useState("");
+  const [newestBrackets, setNewestBrackets] = useState<Item[]>([]);
+  const [joinError, setJoinError] = useState("");
 
   useEffect(() => {
     async function fetchBrackets() {
@@ -25,7 +35,7 @@ export default function Play() {
           method: "GET",
         });
         const data = await res.json();
-        setNewestBrackets(data.brackets);
+        setNewestBrackets(data.brackets ?? []);
       } catch (err) {
         console.error("Error fetching brackets:", err);
       } finally {
@@ -37,17 +47,40 @@ export default function Play() {
   }, []);
 
   const handlePlayItem = async (item: unknown) => {
-    const payload = item;
     try {
       const res = await fetch("/api/sessions", {
         method: "POST",
-        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item),
       });
       const data = await res.json();
-      console.log("TEST: ", data);
+      if (!data?.slug) {
+        throw new Error("Session could not be created");
+      }
       window.location.href = `/play/${data.slug}`;
     } catch (err) {
       console.error("Error generating game session: ", err);
+      setJoinError("Unable to create that room right now.");
+    }
+  };
+
+  const handleSubmit = async () => {
+    const trimmedSlug = slug.trim();
+
+    if (!trimmedSlug) {
+      setJoinError("Please enter a room code.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setJoinError("");
+      window.location.href = `/play/${trimmedSlug}`;
+    } catch (err) {
+      console.error("Error joining room:", err);
+      setJoinError("Unable to enter that room.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,16 +101,49 @@ export default function Play() {
           useFlexGap
           sx={{ flexWrap: "wrap" }}
         >
-          {newestBrackets &&
-            newestBrackets.map((item: item, idx: number) => (
-              <BracketCard
-                key={item._id}
-                id={item._id}
-                index={idx}
-                item={item}
-                onPlayItem={handlePlayItem}
-              ></BracketCard>
-            ))}
+          {newestBrackets.map((item: Item, idx: number) => (
+            <BracketCard
+              key={item._id}
+              id={item._id}
+              index={idx}
+              item={item}
+              onPlayItem={handlePlayItem}
+            />
+          ))}
+        </Stack>
+      </Box>
+      <Box
+        component="form"
+        autoComplete="off"
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 3,
+        }}
+      >
+        <Stack spacing={3}>
+          <TextField
+            id="title-input"
+            label="Room Code"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            fullWidth
+          />
+          {joinError ? (
+            <Typography color="error">{joinError}</Typography>
+          ) : null}
+        </Stack>
+        <Stack spacing={3}>
+          <Divider sx={{ bgcolor: (theme) => theme.palette.secondary.main }} />
+
+          <Button
+            variant="contained"
+            size="large"
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? "Joining..." : "Enter Room"}
+          </Button>
         </Stack>
       </Box>
     </Container>

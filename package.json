@@ -35,6 +35,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/ws": "^8.18.1",
     "aws-cdk-lib": "^2.244.0",
     "constructs": "^10.7.1",
     "esbuild": "^0.28.1",
