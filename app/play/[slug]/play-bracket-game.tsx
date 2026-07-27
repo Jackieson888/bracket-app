@@ -234,10 +234,13 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           <Typography variant="subtitle1">
             Waiting room: the game will start when the host begins it.
           </Typography>
-          <Stack
-            direction={{ xs: "column", sm: "row" }}
-            spacing={1}
-            alignItems="center"
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 1,
+              alignItems: "center",
+            }}
           >
             <TextField
               size="small"
@@ -252,7 +255,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             <Button variant="contained" onClick={handleStartGame}>
               Start Game
             </Button>
-          </Stack>
+          </Box>
           <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
             {clients.map((client) => (
               <Chip key={client.id} label={client.displayName || "Guest"} />
