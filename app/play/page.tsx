@@ -75,6 +75,18 @@ export default function Play() {
     try {
       setLoading(true);
       setJoinError("");
+
+      const response = await fetch(`/api/sessions/${trimmedSlug}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          setJoinError("That room code is invalid or expired.");
+          return;
+        }
+
+        setJoinError("Unable to verify that room right now.");
+        return;
+      }
+
       window.location.href = `/play/${trimmedSlug}`;
     } catch (err) {
       console.error("Error joining room:", err);

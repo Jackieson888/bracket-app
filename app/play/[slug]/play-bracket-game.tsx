@@ -8,6 +8,12 @@ import { useUser } from "@/app/user-provider";
 type Session = {
   bracket: unknown;
   slug?: string;
+  roomStatus?: string;
+  gameState?: RoomState;
+  participantLookup?: Record<
+    string,
+    { participantId: string; displayName?: string; joinedAt?: string | number }
+  >;
   [key: string]: unknown;
 };
 
@@ -21,8 +27,9 @@ type RoomState = {
   round: number;
   currentMatch: number;
   currentRoundItems: Array<{ _id: string; title: string }>;
-  votes: Record<string, number>;
+  votesByMatch?: Record<string, Record<string, { choice: number; at: number }>>;
   pendingVoteCount: number;
+  winner?: { _id: string; title: string } | null;
 };
 
 export default function PlayBracketGame({ slug }: { slug: string }) {
@@ -38,14 +45,95 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [pendingVotes, setPendingVotes] = useState<
     Array<{ round: number; match: number; choice: number }>
   >([]);
+  const [connectionError, setConnectionError] = useState("");
+  const [connectTimeMs, setConnectTimeMs] = useState<number | null>(null);
+  const [sessionError, setSessionError] = useState("");
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [participantId, setParticipantId] = useState("");
+
+  const resolveParticipantId = () => {
+    if (participantId) {
+      return participantId;
+    }
+
+    const key = "tvt-participant-id";
+    const existing = window.localStorage.getItem(key);
+    if (existing) {
+      setParticipantId(existing);
+      return existing;
+    }
+
+    const created = window.crypto.randomUUID();
+    window.localStorage.setItem(key, created);
+    setParticipantId(created);
+    return created;
+  };
+
+  const persistJoin = async (name: string) => {
+    const resolvedName = name.trim() || "Guest";
+    const resolvedParticipantId = resolveParticipantId();
+
+    await fetch(`/api/sessions/${slug}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        participantId: resolvedParticipantId,
+        displayName: resolvedName,
+      }),
+    });
+
+    return resolvedParticipantId;
+  };
 
   useEffect(() => {
+    setSessionLoading(true);
+    setSessionError("");
+
     fetch(`/api/sessions/${slug}`)
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (res.status === 404) {
+          throw new Error("Room not found");
+        }
+
+        if (!res.ok) {
+          throw new Error("Unable to load this room right now");
+        }
+
+        return res.json();
+      })
       .then((data: Session) => {
         setSession(data);
+        if (data.roomStatus) {
+          setRoomStatus(data.roomStatus);
+        }
+        if (data.gameState) {
+          setRoomState(data.gameState);
+        }
+        if (data.participantLookup) {
+          const hydratedClients = Object.values(data.participantLookup).map(
+            (entry) => ({
+              id: entry.participantId,
+              displayName: entry.displayName || "Guest",
+              joinedAt: entry.joinedAt
+                ? new Date(entry.joinedAt).getTime()
+                : Date.now(),
+            }),
+          );
+          if (hydratedClients.length > 0) {
+            setClients(hydratedClients);
+          }
+        }
       })
-      .catch(console.error);
+      .catch((error) => {
+        console.error(error);
+        setSession(null);
+        setSessionError(error?.message || "Unable to load room");
+      })
+      .finally(() => {
+        setSessionLoading(false);
+      });
   }, [slug]);
 
   useEffect(() => {
@@ -66,20 +154,46 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       return;
     }
 
+    const resolvedParticipantId = resolveParticipantId();
+    const resolvedName = (displayName || "Guest").trim() || "Guest";
+
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const connectionStart = Date.now();
+    let didOpen = false;
     const nextSocket = new WebSocket(
-      `${wsProtocol}://${window.location.host}/ws?slug=${slug}`,
+      `${wsProtocol}://${window.location.host}/ws?slug=${encodeURIComponent(slug)}&participantId=${encodeURIComponent(resolvedParticipantId)}&displayName=${encodeURIComponent(resolvedName)}`,
     );
 
+    const timeoutHandle = window.setTimeout(() => {
+      if (didOpen) {
+        return;
+      }
+
+      setConnectionError(
+        "Could not connect to real-time server. Start the app with npm run dev for multiplayer rooms.",
+      );
+      nextSocket.close();
+    }, 1500);
+
     nextSocket.addEventListener("open", () => {
+      didOpen = true;
+      window.clearTimeout(timeoutHandle);
       setConnected(true);
+      setConnectionError("");
+      setConnectTimeMs(Date.now() - connectionStart);
+
       nextSocket.send(
         JSON.stringify({
           type: "join",
           slug,
-          displayName: displayName || "Guest",
+          displayName: resolvedName,
+          participantId: resolvedParticipantId,
         }),
       );
+
+      void persistJoin(resolvedName).catch((error) => {
+        console.error("Failed to persist room join:", error);
+      });
 
       setPendingVotes((current) => {
         if (current.length === 0) {
@@ -94,7 +208,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               JSON.stringify({
                 type: "vote",
                 slug,
-                playerId: nextSocket.url,
+                playerId: resolvedParticipantId,
                 ...vote,
               }),
             );
@@ -131,12 +245,20 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     });
 
     nextSocket.addEventListener("close", () => {
+      window.clearTimeout(timeoutHandle);
       setConnected(false);
+    });
+
+    nextSocket.addEventListener("error", () => {
+      setConnectionError(
+        "Real-time connection failed. Ensure websocket runtime is active (npm run dev).",
+      );
     });
 
     setSocket(nextSocket);
 
     return () => {
+      window.clearTimeout(timeoutHandle);
       nextSocket.close();
     };
   }, [slug]);
@@ -166,12 +288,19 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
 
     const resolvedName = displayName.trim() || "Guest";
+    const resolvedParticipantId = resolveParticipantId();
     setDisplayName(resolvedName);
+
+    void persistJoin(resolvedName).catch((error) => {
+      console.error("Failed to persist room join:", error);
+    });
+
     socket.send(
       JSON.stringify({
         type: "join",
         slug,
         displayName: resolvedName,
+        participantId: resolvedParticipantId,
       }),
     );
   };
@@ -194,7 +323,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       JSON.stringify({
         type: "vote",
         slug,
-        playerId: socket.url,
+        playerId: resolveParticipantId(),
         ...payload,
       }),
     );
@@ -212,8 +341,30 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     return `${clients.length} players in this room`;
   }, [clients.length]);
 
-  if (!session || !session.bracket) {
+  if (sessionLoading) {
     return <div>Loading session...</div>;
+  }
+
+  if (sessionError) {
+    return (
+      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Typography color="error">{sessionError}</Typography>
+        <Button href="/play" variant="contained">
+          Back to Play
+        </Button>
+      </Box>
+    );
+  }
+
+  if (!session || !session.bracket) {
+    return (
+      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Typography color="error">This room is unavailable.</Typography>
+        <Button href="/play" variant="contained">
+          Back to Play
+        </Button>
+      </Box>
+    );
   }
 
   return (
@@ -224,8 +375,17 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           label={connected ? "Connected" : "Connecting..."}
           color={connected ? "success" : "default"}
         />
+        {connectTimeMs !== null ? (
+          <Chip
+            label={`Connect ${connectTimeMs}ms`}
+            color={connectTimeMs <= 100 ? "success" : "warning"}
+          />
+        ) : null}
         <Chip label={joinedLabel} />
       </Box>
+      {connectionError ? (
+        <Typography color="error">{connectionError}</Typography>
+      ) : null}
       <Typography variant="body2" color="text.secondary">
         Share this room code with another player to join the same bracket game.
       </Typography>

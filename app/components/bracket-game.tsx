@@ -16,8 +16,12 @@ type BracketGameProps = {
     round?: number;
     currentMatch?: number;
     currentRoundItems?: Item[];
-    votes?: Record<string, number>;
+    votesByMatch?: Record<
+      string,
+      Record<string, { choice: number; at: number }>
+    >;
     pendingVoteCount?: number;
+    winner?: Item | null;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
 };
@@ -47,24 +51,6 @@ export default function BracketGame({
       setCurrentMatch(roomState.currentMatch);
     }
   }, [roomState]);
-
-  function buildNextRound(items: Item[]) {
-    const winners: Item[] = [];
-
-    for (let i = 0; i < items.length; i += 2) {
-      const left = items[i];
-      const right = items[i + 1];
-
-      if (!right) {
-        winners.push(left);
-        continue;
-      }
-
-      winners.push(left);
-    }
-
-    return winners;
-  }
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
