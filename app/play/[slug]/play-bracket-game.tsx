@@ -161,6 +161,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     const resolvedName = (displayName || "Guest").trim() || "Guest";
 
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const configuredWsBaseUrl = process.env.NEXT_PUBLIC_WS_URL?.trim() || "";
     const MAX_RECONNECT_ATTEMPTS = 3;
     const CONNECT_TIMEOUT_MS = 6000;
     let isUnmounted = false;
@@ -210,9 +211,28 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
       setConnected(false);
       const connectionStart = Date.now();
-      const nextSocket = new WebSocket(
-        `${wsProtocol}://${window.location.host}/ws?slug=${encodeURIComponent(slug)}&participantId=${encodeURIComponent(resolvedParticipantId)}&displayName=${encodeURIComponent(resolvedName)}`,
-      );
+      let wsUrl: URL;
+
+      if (configuredWsBaseUrl) {
+        const normalizedBase = configuredWsBaseUrl.replace(/\/+$/, "");
+        const configuredUrl = new URL(normalizedBase);
+        const configuredProtocol =
+          configuredUrl.protocol === "https:"
+            ? "wss:"
+            : configuredUrl.protocol === "http:"
+              ? "ws:"
+              : configuredUrl.protocol;
+
+        wsUrl = new URL(`${configuredProtocol}//${configuredUrl.host}/ws`);
+      } else {
+        wsUrl = new URL(`${wsProtocol}://${window.location.host}/ws`);
+      }
+
+      wsUrl.searchParams.set("slug", slug);
+      wsUrl.searchParams.set("participantId", resolvedParticipantId);
+      wsUrl.searchParams.set("displayName", resolvedName);
+
+      const nextSocket = new WebSocket(wsUrl.toString());
       let didOpen = false;
       let didScheduleRetry = false;
 

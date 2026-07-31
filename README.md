@@ -1,5 +1,30 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Realtime Runtime (WebSocket)
+
+This app uses a custom Node server in [server.js](server.js) for `/ws` upgrades.
+
+- Development: `npm run dev`
+- Production build: `npm run build`
+- Production runtime: `npm run start`
+
+Important: production must run as a long-lived Node process (or container). If you deploy to a serverless-only target, websocket upgrades will not stay alive.
+
+### EC2 One-Shot Bootstrap Scripts
+
+From the project root, run:
+
+1. App runtime + systemd service (`server.js`):
+   - `powershell -ExecutionPolicy Bypass -File .\\scripts\\bootstrap-ec2-ws.ps1`
+2. Nginx reverse proxy (`/` + `/ws`) and optional TLS:
+   - HTTP only: `powershell -ExecutionPolicy Bypass -File .\\scripts\\bootstrap-ec2-nginx-tls.ps1`
+   - HTTPS/TLS: `powershell -ExecutionPolicy Bypass -File .\\scripts\\bootstrap-ec2-nginx-tls.ps1 -EnableTls -CertEmail "you@example.com"`
+
+After TLS is active, set `NEXT_PUBLIC_WS_URL` in your frontend environment to your public websocket host, for example:
+
+- `NEXT_PUBLIC_WS_URL=wss://your-domain.com`
+- `NEXT_PUBLIC_WS_URL=wss://ec2-44-251-123-224.us-west-2.compute.amazonaws.com` (if cert is valid for that host)
+
 ## Getting Started
 
 First, run the development server:
