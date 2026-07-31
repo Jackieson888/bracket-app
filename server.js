@@ -15,6 +15,7 @@ const roomCleanupTimers = new Map();
 const roomInitializationPromises = new Map();
 const roomPersistenceQueues = new Map();
 const ROOM_IDLE_TTL_MS = Number(process.env.ROOM_IDLE_TTL_MS || 300000);
+const DEFAULT_MATCH_SIZE = 2;
 
 let mongoClientPromise;
 
@@ -174,6 +175,7 @@ async function getOrCreateRoom(slug) {
       gameState: persisted?.gameState || {
         round: 0,
         currentMatch: 0,
+        matchSize: DEFAULT_MATCH_SIZE,
         currentRoundItems: [],
         votesByMatch: {},
         pendingVoteCount: 0,
@@ -219,6 +221,122 @@ function resolveWinningChoice(matchVotes, leftIndex, rightIndex) {
   }
 
   return leftIndex;
+}
+
+function getMatchSize(room) {
+  const matchSize = Number(room?.gameState?.matchSize ?? DEFAULT_MATCH_SIZE);
+
+  if (!Number.isFinite(matchSize) || matchSize < 2) {
+    return DEFAULT_MATCH_SIZE;
+  }
+
+  return Math.floor(matchSize);
+}
+
+function getMatchWindow(currentRoundItems, matchIndex, matchSize) {
+  const startIndex = matchIndex * matchSize;
+
+  return {
+    startIndex,
+    items: currentRoundItems.slice(startIndex, startIndex + matchSize),
+  };
+}
+
+function normalizeBracketProgression(room) {
+  if (!room?.gameState) {
+    return false;
+  }
+
+  let advanced = false;
+  const matchSize = getMatchSize(room);
+
+  while (true) {
+    const currentRoundItems = room.gameState.currentRoundItems ?? [];
+
+    if (currentRoundItems.length <= 1) {
+      room.gameState = {
+        ...room.gameState,
+        currentRoundItems,
+        currentMatch: 0,
+        votesByMatch: {},
+        pendingVoteCount: 0,
+        requiredVoteCount: 0,
+        roundWinners: [],
+        winner: currentRoundItems[0] ?? null,
+      };
+      room.roomStatus = "completed";
+      return true;
+    }
+
+    const match = room.gameState.currentMatch ?? 0;
+    const round = room.gameState.round ?? 0;
+    const matchKey = getMatchKey(round, match);
+    const matchVotes = room.gameState.votesByMatch?.[matchKey] ?? {};
+    const { startIndex, items: matchItems } = getMatchWindow(
+      currentRoundItems,
+      match,
+      matchSize,
+    );
+
+    if (matchItems.length === 0) {
+      return advanced;
+    }
+
+    if (matchItems.length === 1) {
+      advanced = true;
+      const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
+      nextRoundWinners[match] = matchItems[0];
+
+      const totalMatches = Math.ceil(currentRoundItems.length / matchSize);
+      const completedMatches = nextRoundWinners.filter(Boolean).length;
+
+      room.gameState.roundWinners = nextRoundWinners;
+      room.gameState.pendingVoteCount = 0;
+      room.gameState.requiredVoteCount = 0;
+
+      if (completedMatches >= totalMatches) {
+        const nextRoundItems = nextRoundWinners.filter(Boolean);
+
+        if (nextRoundItems.length <= 1) {
+          room.gameState = {
+            ...room.gameState,
+            currentRoundItems: nextRoundItems,
+            currentMatch: 0,
+            votesByMatch: {},
+            pendingVoteCount: 0,
+            requiredVoteCount: 0,
+            roundWinners: [],
+            winner: nextRoundItems[0] ?? null,
+          };
+          room.roomStatus = "completed";
+        } else {
+          room.gameState = {
+            ...room.gameState,
+            round: (room.gameState.round ?? 0) + 1,
+            currentMatch: 0,
+            currentRoundItems: nextRoundItems,
+            votesByMatch: {},
+            pendingVoteCount: 0,
+            requiredVoteCount: 0,
+            roundWinners: [],
+          };
+        }
+      } else {
+        room.gameState.currentMatch = match + 1;
+      }
+
+      continue;
+    }
+
+    room.gameState.pendingVoteCount = Object.keys(matchVotes).length;
+    room.gameState.requiredVoteCount = Math.max(
+      1,
+      Math.min(matchSize, room.participantIds.size),
+    );
+    advanced = true;
+
+    return advanced;
+  }
 }
 
 function getRoomClients(slug) {
@@ -420,12 +538,15 @@ app.prepare().then(() => {
           room.gameState = {
             round: 0,
             currentMatch: 0,
+            matchSize: DEFAULT_MATCH_SIZE,
             currentRoundItems: data.currentRoundItems ?? [],
             votesByMatch: {},
             pendingVoteCount: 0,
+            requiredVoteCount: 0,
             roundWinners: [],
             winner: null,
           };
+          normalizeBracketProgression(room);
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
           broadcastGameUpdate(slug, {
             type: "game-started",
@@ -448,8 +569,15 @@ app.prepare().then(() => {
               ? data.match
               : (room.gameState.currentMatch ?? 0);
           const choice = Number(data.choice);
+          const expectedRound = room.gameState.round ?? 0;
+          const expectedMatch = room.gameState.currentMatch ?? 0;
+          const matchSize = getMatchSize(room);
 
           if (!playerId || Number.isNaN(choice)) {
+            return;
+          }
+
+          if (round !== expectedRound || match !== expectedMatch) {
             return;
           }
 
@@ -469,32 +597,38 @@ app.prepare().then(() => {
           };
 
           const currentRoundItems = room.gameState.currentRoundItems ?? [];
-          const leftIndex = match * 2;
-          const rightIndex = leftIndex + 1;
-          const left = currentRoundItems[leftIndex];
-          const right = currentRoundItems[rightIndex];
+          const { startIndex, items: matchItems } = getMatchWindow(
+            currentRoundItems,
+            match,
+            matchSize,
+          );
+          const left = matchItems[0];
+          const right = matchItems[1];
 
           if (!left) {
             return;
           }
 
           const activeParticipantCount = room.participantIds.size;
-          const requiredVotes = right
-            ? Math.max(1, Math.min(2, activeParticipantCount))
-            : 1;
+          const requiredVotes = Math.max(
+            1,
+            Math.min(matchSize, activeParticipantCount),
+          );
           room.gameState.pendingVoteCount = Object.keys(matchVotes).length;
           room.gameState.requiredVoteCount = requiredVotes;
 
           if (room.gameState.pendingVoteCount >= requiredVotes) {
             const winningChoice = right
-              ? resolveWinningChoice(matchVotes, leftIndex, rightIndex)
-              : leftIndex;
+              ? resolveWinningChoice(matchVotes, startIndex, startIndex + 1)
+              : startIndex;
             const winnerItem =
-              right && winningChoice === rightIndex ? right : left;
+              right && winningChoice === startIndex + 1 ? right : left;
             const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
             nextRoundWinners[match] = winnerItem;
 
-            const totalMatches = Math.ceil(currentRoundItems.length / 2);
+            const totalMatches = Math.ceil(
+              currentRoundItems.length / matchSize,
+            );
             const completedMatches = nextRoundWinners.filter(Boolean).length;
 
             room.gameState.roundWinners = nextRoundWinners;
@@ -510,6 +644,7 @@ app.prepare().then(() => {
                   currentMatch: 0,
                   votesByMatch: {},
                   pendingVoteCount: 0,
+                  requiredVoteCount: 0,
                   roundWinners: [],
                   winner: nextRoundItems[0] ?? null,
                 };
@@ -522,6 +657,7 @@ app.prepare().then(() => {
                   currentRoundItems: nextRoundItems,
                   votesByMatch: {},
                   pendingVoteCount: 0,
+                  requiredVoteCount: 0,
                   roundWinners: [],
                 };
               }
@@ -529,6 +665,8 @@ app.prepare().then(() => {
               room.gameState.currentMatch =
                 (room.gameState.currentMatch ?? 0) + 1;
             }
+
+            normalizeBracketProgression(room);
           }
 
           broadcastGameUpdate(slug, {

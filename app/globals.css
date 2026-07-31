@@ -1,15 +1,21 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300..700&family=Roboto+Mono:wght@100..700&family=Ultra&display=swap");
 @import "tailwindcss";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-heading: "Ultra", Georgia, serif;
+  --font-body: "Roboto Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-mono-ui:
+    "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono-ui);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +28,194 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono-ui);
+}
+
+.bracket-round-panel {
+  animation: bracketRoundPanelEnter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.bracket-round-header {
+  animation: bracketRoundHeaderEnter 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.bracket-round-banner {
+  display: inline-flex;
+  align-items: center;
+  animation: bracketRoundBannerEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center;
+}
+
+.bracket-round-banner--winner {
+  animation:
+    bracketRoundBannerEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    bracketWinnerEmphasis 1100ms cubic-bezier(0.18, 1, 0.32, 1) 160ms both;
+}
+
+.bracket-matchup-stack {
+  animation: bracketMatchupStackEnter 900ms cubic-bezier(0.2, 1, 0.3, 1) both;
+}
+
+.bracket-round-vs {
+  animation: bracketRoundVsEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.bracket-round-item {
+  animation: bracketItemEnter 960ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--bracket-item-delay, 0ms);
+  transform-origin: center;
+  will-change: transform, opacity, filter;
+}
+
+.bracket-round-item--winner {
+  animation:
+    bracketItemEnter 960ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    bracketWinnerEmphasis 1100ms cubic-bezier(0.18, 1, 0.32, 1)
+      calc(var(--bracket-item-delay, 0ms) + 180ms) both;
+}
+
+.bracket-round-item__card {
+  width: 100%;
+}
+
+@keyframes bracketRoundPanelEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bracketRoundHeaderEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+    filter: blur(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes bracketRoundBannerEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.85) rotate(-2deg);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.06) rotate(1deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes bracketMatchupStackEnter {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bracketRoundVsEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bracketItemEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.95);
+    filter: blur(3px);
+  }
+
+  65% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.02);
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes bracketWinnerEmphasis {
+  0% {
+    transform: scale(1);
+    filter: saturate(1);
+    box-shadow: 0 0 0 rgba(167, 62, 38, 0);
+  }
+
+  35% {
+    transform: scale(1.045);
+    filter: saturate(1.15);
+    box-shadow: 0 0 0 10px rgba(167, 62, 38, 0.15);
+  }
+
+  70% {
+    transform: scale(1.02);
+    filter: saturate(1.08);
+    box-shadow: 0 0 0 4px rgba(167, 62, 38, 0.08);
+  }
+
+  100% {
+    transform: scale(1);
+    filter: saturate(1);
+    box-shadow: 0 0 0 rgba(167, 62, 38, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bracket-round-panel,
+  .bracket-round-header,
+  .bracket-round-banner,
+  .bracket-matchup-stack,
+  .bracket-round-vs,
+  .bracket-round-item,
+  .bracket-round-banner--winner,
+  .bracket-round-item--winner {
+    animation: none !important;
+    transform: none !important;
+    filter: none !important;
+  }
 }

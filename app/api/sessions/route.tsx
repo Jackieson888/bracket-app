@@ -52,6 +52,7 @@ export async function POST(req: Request) {
     gameState: {
       round: 0,
       currentMatch: 0,
+      matchSize: 2,
       currentRoundItems: [],
       votesByMatch: {},
       pendingVoteCount: 0,

@@ -1,18 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 import {
   Card,
-  Box,
   CardActionArea,
   CardContent,
   Typography,
-  IconButton,
+  Chip,
 } from "@mui/material";
 import MediaModal from "./media-modal";
 import Image from "next/image";
-import { CheckCircle } from "@mui/icons-material";
 
 type Item = {
   url?: string;
@@ -25,51 +23,59 @@ type Props = {
   item: Item;
   index: number;
   handleVote: (args: { item: Item; index: number }) => void;
+  votes: number | null;
+  className?: string;
+  style?: CSSProperties;
 };
 
-export default function GameItemCard({ item, index, handleVote }: Props) {
+export default function GameItemCard({
+  item,
+  index,
+  handleVote,
+  votes,
+  className,
+  style,
+}: Props) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Card sx={{ maxWidth: 345 }}>
-        <CardActionArea onClick={() => setOpen(true)}>
+      <Card className={className} style={style}>
+        <CardActionArea sx={{ padding: 1 }}>
           {item.url && (
             <Image
               src={item.url}
               alt={item.title}
               width={item.width}
               height={item.height}
-              style={{ width: "auto", height: 100, borderRadius: 8 }}
+              loading="eager"
+              style={{
+                width: "auto",
+                height: 400,
+                borderRadius: 8,
+                paddingBottom: "8px",
+              }}
               onClick={() => setOpen(true)}
             />
           )}
-          <CardContent>
+          <CardContent
+            onClick={() => handleVote({ item, index })}
+            sx={{
+              padding: 0,
+              display: "flex",
+              flexDirection: "row",
+            }}
+          >
             <Typography
               variant="h5"
               color="primary"
-              sx={{ fontWeight: "bold" }}
+              sx={{ fontWeight: "bold", flexGrow: 1 }}
             >
               {item.title}
             </Typography>
+            {votes !== null && <Chip label={votes} />}
           </CardContent>
         </CardActionArea>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            backgroundColor: "#E79F7F",
-          }}
-        >
-          <IconButton
-            aria-label="edit"
-            color="secondary"
-            onClick={() => handleVote({ item, index })}
-          >
-            <CheckCircle />
-          </IconButton>
-        </Box>
       </Card>
 
       {item.url && (

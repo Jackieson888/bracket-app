@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
 import { useUser } from "@/app/user-provider";
+import { Circle } from "@mui/icons-material";
+import { Timer } from "@mui/icons-material";
 
 type Session = {
   bracket: unknown;
@@ -455,27 +457,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 2, p: 2 }}>
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-        <Chip label={`Room ${slug}`} color="primary" />
-        <Chip
-          label={connected ? "Connected" : "Connecting..."}
-          color={connected ? "success" : "default"}
-        />
-        {connectTimeMs !== null ? (
-          <Chip
-            label={`Connect ${connectTimeMs}ms`}
-            color={connectTimeMs <= 100 ? "success" : "warning"}
-          />
-        ) : null}
-        <Chip label={joinedLabel} />
-      </Box>
-      {connectionError ? (
-        <Typography color="error">{connectionError}</Typography>
-      ) : null}
-      <Typography variant="body2" color="text.secondary">
-        Share this room code with another player to join, or start right away to
-        play solo.
-      </Typography>
       {!hasGameStarted ? (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           <Typography variant="subtitle1">
@@ -510,11 +491,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             ))}
           </Box>
         </Box>
-      ) : (
-        <Typography variant="subtitle1">
-          {roomStatus === "completed" ? "Game completed." : "Game in progress."}
-        </Typography>
-      )}
+      ) : null}
       {hasGameStarted ? (
         <BracketGame
           bracket={
@@ -527,6 +504,37 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           playerCount={Math.max(1, clients.length)}
         />
       ) : null}
+      <Stack
+        direction="row"
+        spacing={1}
+        sx={{ justifyContent: "space-between", width: "stretch" }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Typography component="span">Room &nbsp;</Typography>
+          <Chip label={<code>{slug}</code>} color="secondary" />
+        </Box>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          {connectTimeMs !== null ? (
+            <Chip
+              icon={
+                connectTimeMs <= 100 ? (
+                  <Circle sx={{ width: "24px", paddingLeft: "4px" }} />
+                ) : (
+                  <Timer sx={{ width: "24px", paddingLeft: "4px" }} />
+                )
+              }
+              label={`${connectTimeMs}ms`}
+              color={connectTimeMs <= 100 ? "primary" : "secondary"}
+              variant="outlined"
+            />
+          ) : null}
+          {connectionError ? (
+            <Typography color="error" variant="body2">
+              {connectionError}
+            </Typography>
+          ) : null}
+        </Stack>
+      </Stack>
     </Box>
   );
 }
