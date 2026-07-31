@@ -47,6 +47,8 @@ export async function POST(req: Request) {
         ]
       : [],
     roomStatus: "waiting",
+    gameStateVersion: 0,
+    roomSnapshotVersion: 0,
     gameState: {
       round: 0,
       currentMatch: 0,

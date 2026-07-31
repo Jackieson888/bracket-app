@@ -21,9 +21,11 @@ type BracketGameProps = {
       Record<string, { choice: number; at: number }>
     >;
     pendingVoteCount?: number;
+    requiredVoteCount?: number;
     winner?: Item | null;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
+  playerCount?: number;
 };
 
 export default function BracketGame({
@@ -32,6 +34,7 @@ export default function BracketGame({
   session,
   roomState,
   onVote,
+  playerCount = 2,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
@@ -73,12 +76,21 @@ export default function BracketGame({
     }
 
     const totalVotes = roomState?.pendingVoteCount ?? 0;
+    const requiredVotes =
+      roomState?.requiredVoteCount ?? Math.max(1, Math.min(2, playerCount));
+    const votesRemaining = Math.max(0, requiredVotes - totalVotes);
+
     setVoteSummary(
-      totalVotes >= 2
-        ? "Both players have voted. Moving to the next matchup."
-        : `Waiting for ${Math.max(0, 2 - totalVotes)} more vote${Math.max(0, 2 - totalVotes) === 1 ? "" : "s"}`,
+      totalVotes >= requiredVotes
+        ? "Votes received. Moving to the next matchup."
+        : `Waiting for ${votesRemaining} more vote${votesRemaining === 1 ? "" : "s"}`,
     );
-  }, [currentRoundItems.length, roomState?.pendingVoteCount]);
+  }, [
+    currentRoundItems.length,
+    playerCount,
+    roomState?.pendingVoteCount,
+    roomState?.requiredVoteCount,
+  ]);
 
   const left = currentRoundItems[currentMatch * 2];
   const right = currentRoundItems[currentMatch * 2 + 1];

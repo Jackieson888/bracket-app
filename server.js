@@ -13,6 +13,7 @@ const handle = app.getRequestHandler();
 const rooms = new Map();
 const roomCleanupTimers = new Map();
 const roomInitializationPromises = new Map();
+const roomPersistenceQueues = new Map();
 const ROOM_IDLE_TTL_MS = Number(process.env.ROOM_IDLE_TTL_MS || 300000);
 
 let mongoClientPromise;
@@ -53,6 +54,8 @@ async function loadPersistedRoom(slug) {
             gameState: 1,
             participantIds: 1,
             participantLookup: 1,
+            gameStateVersion: 1,
+            roomSnapshotVersion: 1,
           },
         },
       ),
@@ -65,24 +68,56 @@ async function loadPersistedRoom(slug) {
   }
 }
 
-async function persistRoomSnapshot(slug, room) {
-  try {
-    await withSessionsCollection((sessions) =>
-      sessions.updateOne(
-        { slug },
-        {
-          $set: {
-            roomStatus: room.roomStatus,
-            gameState: room.gameState,
-            participantIds: Array.from(room.participantIds || []),
-            roomUpdatedAt: new Date(),
-          },
-        },
-      ),
-    );
-  } catch (error) {
-    console.error("Failed to persist room snapshot:", error);
+function persistRoomSnapshot(slug, room, options = {}) {
+  const gameStateChanged = Boolean(options.gameStateChanged);
+
+  if (gameStateChanged) {
+    room.gameStateVersion = (room.gameStateVersion ?? 0) + 1;
   }
+
+  room.roomSnapshotVersion = (room.roomSnapshotVersion ?? 0) + 1;
+
+  const snapshot = {
+    roomStatus: room.roomStatus,
+    gameState: JSON.parse(JSON.stringify(room.gameState ?? {})),
+    participantIds: Array.from(room.participantIds || []),
+    gameStateVersion: room.gameStateVersion ?? 0,
+    roomSnapshotVersion: room.roomSnapshotVersion,
+    roomUpdatedAt: new Date(),
+  };
+
+  const previous = roomPersistenceQueues.get(slug) ?? Promise.resolve();
+  const next = previous
+    .catch(() => {
+      // Keep the queue alive even if a previous write failed.
+    })
+    .then(async () => {
+      try {
+        await withSessionsCollection((sessions) =>
+          sessions.updateOne(
+            {
+              slug,
+              $or: [
+                { roomSnapshotVersion: { $exists: false } },
+                { roomSnapshotVersion: { $lte: snapshot.roomSnapshotVersion } },
+              ],
+            },
+            {
+              $set: snapshot,
+            },
+          ),
+        );
+      } catch (error) {
+        console.error("Failed to persist room snapshot:", error);
+      }
+    });
+
+  roomPersistenceQueues.set(slug, next);
+  void next.finally(() => {
+    if (roomPersistenceQueues.get(slug) === next) {
+      roomPersistenceQueues.delete(slug);
+    }
+  });
 }
 
 function scheduleRoomCleanup(slug) {
@@ -134,6 +169,8 @@ async function getOrCreateRoom(slug) {
           : persistedLookupIds,
       ),
       roomStatus: persisted?.roomStatus || "waiting",
+      gameStateVersion: Number(persisted?.gameStateVersion ?? 0),
+      roomSnapshotVersion: Number(persisted?.roomSnapshotVersion ?? 0),
       gameState: persisted?.gameState || {
         round: 0,
         currentMatch: 0,
@@ -236,10 +273,34 @@ app.prepare().then(() => {
   const server = http.createServer((req, res) => {
     handle(req, res);
   });
+  const handleUpgrade = app.getUpgradeHandler();
 
   const wss = new WebSocketServer({
-    server,
-    path: "/ws",
+    noServer: true,
+  });
+
+  server.on("upgrade", (req, socket, head) => {
+    const hostHeader =
+      typeof req.headers.host === "string" && req.headers.host.length > 0
+        ? req.headers.host
+        : "localhost";
+
+    let pathname = "/";
+    try {
+      const requestUrl = new URL(req.url || "/", `http://${hostHeader}`);
+      pathname = requestUrl.pathname;
+    } catch {
+      pathname = "/";
+    }
+
+    if (pathname === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+      return;
+    }
+
+    handleUpgrade(req, socket, head);
   });
 
   wss.on("connection", async (ws, req) => {
@@ -301,7 +362,7 @@ app.prepare().then(() => {
     }
 
     room.clients.set(ws, client);
-    void persistRoomSnapshot(slug, room);
+    persistRoomSnapshot(slug, room);
     broadcastRoomState(slug);
 
     ws.on("message", (message) => {
@@ -345,7 +406,7 @@ app.prepare().then(() => {
             }),
           );
 
-          void persistRoomSnapshot(slug, room);
+          persistRoomSnapshot(slug, room);
           broadcastRoomState(slug);
         }
 
@@ -365,7 +426,7 @@ app.prepare().then(() => {
             roundWinners: [],
             winner: null,
           };
-          void persistRoomSnapshot(slug, room);
+          persistRoomSnapshot(slug, room, { gameStateChanged: true });
           broadcastGameUpdate(slug, {
             type: "game-started",
             roomStatus: room.roomStatus,
@@ -417,8 +478,12 @@ app.prepare().then(() => {
             return;
           }
 
-          const requiredVotes = right ? 2 : 1;
+          const activeParticipantCount = room.participantIds.size;
+          const requiredVotes = right
+            ? Math.max(1, Math.min(2, activeParticipantCount))
+            : 1;
           room.gameState.pendingVoteCount = Object.keys(matchVotes).length;
+          room.gameState.requiredVoteCount = requiredVotes;
 
           if (room.gameState.pendingVoteCount >= requiredVotes) {
             const winningChoice = right
@@ -472,7 +537,7 @@ app.prepare().then(() => {
             vote: data,
             gameState: room.gameState,
           });
-          void persistRoomSnapshot(slug, room);
+          persistRoomSnapshot(slug, room, { gameStateChanged: true });
         }
 
         if (data?.type === "sync-state") {
@@ -484,7 +549,7 @@ app.prepare().then(() => {
             type: "game-sync",
             gameState: room.gameState,
           });
-          void persistRoomSnapshot(slug, room);
+          persistRoomSnapshot(slug, room, { gameStateChanged: true });
         }
       } catch (error) {
         console.error("WebSocket message error:", error);
@@ -501,7 +566,7 @@ app.prepare().then(() => {
       currentRoom.clients.delete(ws);
 
       if (currentRoom.clients.size === 0) {
-        void persistRoomSnapshot(slug, currentRoom);
+        persistRoomSnapshot(slug, currentRoom);
         scheduleRoomCleanup(slug);
       } else {
         broadcastRoomState(slug);
@@ -510,6 +575,8 @@ app.prepare().then(() => {
   });
 
   server.listen(port, hostname, () => {
-    console.log(`> Ready on http://${hostname}:${port}`);
+    console.log(
+      `> Ready on http://localhost:${port} (bound to ${hostname}:${port})`,
+    );
   });
 });

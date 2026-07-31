@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
 import { useUser } from "@/app/user-provider";
@@ -50,6 +50,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [sessionError, setSessionError] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
   const [participantId, setParticipantId] = useState("");
+  const reconnectAttemptRef = useRef(0);
 
   const resolveParticipantId = () => {
     if (participantId) {
@@ -158,108 +159,188 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     const resolvedName = (displayName || "Guest").trim() || "Guest";
 
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const connectionStart = Date.now();
-    let didOpen = false;
-    const nextSocket = new WebSocket(
-      `${wsProtocol}://${window.location.host}/ws?slug=${encodeURIComponent(slug)}&participantId=${encodeURIComponent(resolvedParticipantId)}&displayName=${encodeURIComponent(resolvedName)}`,
-    );
+    const MAX_RECONNECT_ATTEMPTS = 3;
+    const CONNECT_TIMEOUT_MS = 6000;
+    let isUnmounted = false;
+    let openTimeoutHandle: number | null = null;
+    let reconnectTimeoutHandle: number | null = null;
+    let activeSocket: WebSocket | null = null;
 
-    const timeoutHandle = window.setTimeout(() => {
-      if (didOpen) {
+    const clearHandles = () => {
+      if (openTimeoutHandle !== null) {
+        window.clearTimeout(openTimeoutHandle);
+        openTimeoutHandle = null;
+      }
+
+      if (reconnectTimeoutHandle !== null) {
+        window.clearTimeout(reconnectTimeoutHandle);
+        reconnectTimeoutHandle = null;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (isUnmounted) {
         return;
       }
 
+      if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        setConnectionError(
+          "Real-time connection failed. Ensure websocket runtime is active (npm run dev), then refresh.",
+        );
+        return;
+      }
+
+      reconnectAttemptRef.current += 1;
+      const attempt = reconnectAttemptRef.current;
+      const retryDelayMs = Math.min(300 * attempt, 1000);
       setConnectionError(
-        "Could not connect to real-time server. Start the app with npm run dev for multiplayer rooms.",
+        `Connecting to room... retry ${attempt}/${MAX_RECONNECT_ATTEMPTS}`,
       );
-      nextSocket.close();
-    }, 1500);
+      reconnectTimeoutHandle = window.setTimeout(() => {
+        connectSocket();
+      }, retryDelayMs);
+    };
 
-    nextSocket.addEventListener("open", () => {
-      didOpen = true;
-      window.clearTimeout(timeoutHandle);
-      setConnected(true);
-      setConnectionError("");
-      setConnectTimeMs(Date.now() - connectionStart);
+    const connectSocket = () => {
+      if (isUnmounted) {
+        return;
+      }
 
-      nextSocket.send(
-        JSON.stringify({
-          type: "join",
-          slug,
-          displayName: resolvedName,
-          participantId: resolvedParticipantId,
-        }),
+      setConnected(false);
+      const connectionStart = Date.now();
+      const nextSocket = new WebSocket(
+        `${wsProtocol}://${window.location.host}/ws?slug=${encodeURIComponent(slug)}&participantId=${encodeURIComponent(resolvedParticipantId)}&displayName=${encodeURIComponent(resolvedName)}`,
       );
+      let didOpen = false;
+      let didScheduleRetry = false;
 
-      void persistJoin(resolvedName).catch((error) => {
-        console.error("Failed to persist room join:", error);
-      });
+      activeSocket = nextSocket;
+      setSocket(nextSocket);
 
-      setPendingVotes((current) => {
-        if (current.length === 0) {
-          return current;
+      openTimeoutHandle = window.setTimeout(() => {
+        if (didOpen || isUnmounted) {
+          return;
         }
 
-        const queued = [...current];
-        const nextBatch = queued.splice(0);
-        setTimeout(() => {
-          nextBatch.forEach((vote) => {
-            nextSocket.send(
-              JSON.stringify({
-                type: "vote",
-                slug,
-                playerId: resolvedParticipantId,
-                ...vote,
-              }),
-            );
-          });
-        }, 0);
+        nextSocket.close();
+      }, CONNECT_TIMEOUT_MS);
 
-        return [];
+      nextSocket.addEventListener("open", () => {
+        if (isUnmounted) {
+          return;
+        }
+
+        didOpen = true;
+        reconnectAttemptRef.current = 0;
+        if (openTimeoutHandle !== null) {
+          window.clearTimeout(openTimeoutHandle);
+          openTimeoutHandle = null;
+        }
+        setConnected(true);
+        setConnectionError("");
+        setConnectTimeMs(Date.now() - connectionStart);
+
+        nextSocket.send(
+          JSON.stringify({
+            type: "join",
+            slug,
+            displayName: resolvedName,
+            participantId: resolvedParticipantId,
+          }),
+        );
+
+        void persistJoin(resolvedName).catch((error) => {
+          console.error("Failed to persist room join:", error);
+        });
+
+        setPendingVotes((current) => {
+          if (current.length === 0) {
+            return current;
+          }
+
+          const queued = [...current];
+          const nextBatch = queued.splice(0);
+          setTimeout(() => {
+            nextBatch.forEach((vote) => {
+              nextSocket.send(
+                JSON.stringify({
+                  type: "vote",
+                  slug,
+                  playerId: resolvedParticipantId,
+                  ...vote,
+                }),
+              );
+            });
+          }, 0);
+
+          return [];
+        });
       });
-    });
 
-    nextSocket.addEventListener("message", (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload?.type === "room-state") {
-          setClients(payload.clients ?? []);
-          setRoomStatus(payload.roomStatus ?? "waiting");
-          if (payload.gameState) {
+      nextSocket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === "room-state") {
+            setClients(payload.clients ?? []);
+            setRoomStatus(payload.roomStatus ?? "waiting");
+            if (payload.gameState) {
+              setRoomState(payload.gameState);
+            }
+          }
+
+          if (payload?.type === "game-started") {
+            setRoomStatus(payload.roomStatus ?? "started");
             setRoomState(payload.gameState);
           }
+
+          if (
+            payload?.type === "vote-update" ||
+            payload?.type === "game-sync"
+          ) {
+            setRoomStatus((current) => payload.roomStatus ?? current);
+            setRoomState(payload.gameState);
+          }
+        } catch (error) {
+          console.error("Error reading room state", error);
+        }
+      });
+
+      nextSocket.addEventListener("close", () => {
+        if (openTimeoutHandle !== null) {
+          window.clearTimeout(openTimeoutHandle);
+          openTimeoutHandle = null;
         }
 
-        if (payload?.type === "game-started") {
-          setRoomStatus(payload.roomStatus ?? "started");
-          setRoomState(payload.gameState);
+        if (isUnmounted) {
+          return;
         }
 
-        if (payload?.type === "vote-update" || payload?.type === "game-sync") {
-          setRoomStatus(payload.roomStatus ?? roomStatus);
-          setRoomState(payload.gameState);
+        setConnected(false);
+
+        if (!didOpen && !didScheduleRetry) {
+          didScheduleRetry = true;
+          scheduleReconnect();
         }
-      } catch (error) {
-        console.error("Error reading room state", error);
-      }
-    });
+      });
 
-    nextSocket.addEventListener("close", () => {
-      window.clearTimeout(timeoutHandle);
-      setConnected(false);
-    });
+      nextSocket.addEventListener("error", () => {
+        if (isUnmounted || didScheduleRetry) {
+          return;
+        }
 
-    nextSocket.addEventListener("error", () => {
-      setConnectionError(
-        "Real-time connection failed. Ensure websocket runtime is active (npm run dev).",
-      );
-    });
+        didScheduleRetry = true;
+        scheduleReconnect();
+      });
+    };
 
-    setSocket(nextSocket);
+    reconnectAttemptRef.current = 0;
+    connectSocket();
 
     return () => {
-      window.clearTimeout(timeoutHandle);
-      nextSocket.close();
+      isUnmounted = true;
+      clearHandles();
+      activeSocket?.close();
+      setSocket(null);
     };
   }, [slug]);
 
@@ -341,6 +422,11 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     return `${clients.length} players in this room`;
   }, [clients.length]);
 
+  const hasGameStarted =
+    roomStatus === "started" ||
+    roomStatus === "completed" ||
+    Boolean(roomState?.currentRoundItems?.length);
+
   if (sessionLoading) {
     return <div>Loading session...</div>;
   }
@@ -387,12 +473,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         <Typography color="error">{connectionError}</Typography>
       ) : null}
       <Typography variant="body2" color="text.secondary">
-        Share this room code with another player to join the same bracket game.
+        Share this room code with another player to join, or start right away to
+        play solo.
       </Typography>
-      {roomStatus === "waiting" ? (
+      {!hasGameStarted ? (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           <Typography variant="subtitle1">
-            Waiting room: the game will start when the host begins it.
+            Waiting room: press Start Game when you are ready. You can also
+            start and play solo.
           </Typography>
           <Box
             sx={{
@@ -423,17 +511,22 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           </Box>
         </Box>
       ) : (
-        <Typography variant="subtitle1">Game in progress.</Typography>
+        <Typography variant="subtitle1">
+          {roomStatus === "completed" ? "Game completed." : "Game in progress."}
+        </Typography>
       )}
-      <BracketGame
-        bracket={
-          session.bracket as { items?: Array<{ _id: string; title: string }> }
-        }
-        slug={slug}
-        session={session}
-        roomState={roomState ?? undefined}
-        onVote={handleVote}
-      />
+      {hasGameStarted ? (
+        <BracketGame
+          bracket={
+            session.bracket as { items?: Array<{ _id: string; title: string }> }
+          }
+          slug={slug}
+          session={session}
+          roomState={roomState ?? undefined}
+          onVote={handleVote}
+          playerCount={Math.max(1, clients.length)}
+        />
+      ) : null}
     </Box>
   );
 }

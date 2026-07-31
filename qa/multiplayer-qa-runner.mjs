@@ -89,6 +89,24 @@ async function waitFor(predicate, timeoutMs, label) {
   throw new Error(`Timeout waiting for ${label}`);
 }
 
+async function waitForSessionSnapshot(slug, predicate, timeoutMs, label) {
+  const start = Date.now();
+  let lastSnapshot = null;
+
+  while (Date.now() - start < timeoutMs) {
+    const snapshot = await api(`/api/sessions/${slug}`);
+    lastSnapshot = snapshot;
+    if (predicate(snapshot)) {
+      return snapshot;
+    }
+    await sleep(50);
+  }
+
+  throw new Error(
+    `Timeout waiting for ${label}. Last snapshot: ${JSON.stringify({ roomStatus: lastSnapshot?.body?.roomStatus, round: lastSnapshot?.body?.gameState?.round, currentMatch: lastSnapshot?.body?.gameState?.currentMatch, gameStateVersion: lastSnapshot?.body?.gameStateVersion, roomSnapshotVersion: lastSnapshot?.body?.roomSnapshotVersion })}`,
+  );
+}
+
 function assert(condition, name, detail) {
   out.checks[name] = { pass: Boolean(condition), detail };
   if (!condition) out.errors.push(`${name} failed: ${detail}`);
@@ -326,7 +344,16 @@ async function main() {
   friend.ws.close();
   await sleep(1000);
 
-  snapshot = await api(`/api/sessions/${slug}`);
+  snapshot = await waitForSessionSnapshot(
+    slug,
+    (nextSnapshot) =>
+      nextSnapshot.ok &&
+      nextSnapshot.body?.roomStatus === "started" &&
+      nextSnapshot.body?.gameState?.round === 1 &&
+      nextSnapshot.body?.gameState?.currentMatch === 0,
+    2500,
+    "persisted round-1 state after full disconnect",
+  );
   assert(
     snapshot.ok &&
       snapshot.body?.roomStatus === "started" &&
@@ -474,6 +501,9 @@ async function main() {
   out.passCount = Object.values(out.checks).filter((v) => v.pass).length;
   out.failCount = Object.values(out.checks).filter((v) => !v.pass).length;
   console.log(JSON.stringify(out, null, 2));
+  if (out.failCount > 0) {
+    process.exitCode = 1;
+  }
 }
 
 main().catch((err) => {
