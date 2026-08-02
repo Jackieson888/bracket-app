@@ -1,6 +1,7 @@
 param(
   [string]$KeyPath = "C:\Users\jscha\tvt-game-app\TVT_WS_GAME_KEY.pem",
-  [string]$Host = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
+  [Alias("Host")]
+  [string]$Ec2Host = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
   [string]$RemoteUser = "ubuntu",
   [string]$AppDir = "/home/ubuntu/tvt-game-app",
   [string]$NodeVersion = "20",
@@ -26,10 +27,10 @@ icacls $KeyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 $resolvedEnvFile = (Resolve-Path -LiteralPath $LocalEnvFile).Path
 $remoteEnvPath = "/tmp/tvt-game-ws.env"
 
-Write-Host "Uploading runtime env file to $Host..."
-& scp -i $KeyPath -o StrictHostKeyChecking=accept-new $resolvedEnvFile "$($RemoteUser)@$Host`:$remoteEnvPath"
+Write-Host "Uploading runtime env file to $Ec2Host..."
+& scp -i $KeyPath -o StrictHostKeyChecking=accept-new $resolvedEnvFile "$($RemoteUser)@$Ec2Host`:$remoteEnvPath"
 if ($LASTEXITCODE -ne 0) {
-  throw "Failed to upload runtime env file to $Host"
+  throw "Failed to upload runtime env file to $Ec2Host"
 }
 
 $remoteScript = @'
@@ -123,12 +124,24 @@ sudo systemctl restart tvt-game-ws
 
 echo "[10/10] Validating service health..."
 systemctl --no-pager --full status tvt-game-ws || true
-curl --fail --silent http://127.0.0.1:3000/health
+for i in {1..10}; do
+  if curl --fail --silent http://127.0.0.1:3000/health; then
+    echo
+    break
+  fi
+
+  if [ "$i" -eq 10 ]; then
+    echo "Health check failed after retries."
+    exit 1
+  fi
+
+  sleep 1
+done
 
 echo "Done."
 '@
 
-$target = "$RemoteUser@$Host"
+$target = "$RemoteUser@$Ec2Host"
 $sshArgs = @(
   "-i", $KeyPath,
   "-o", "StrictHostKeyChecking=accept-new",
@@ -137,7 +150,11 @@ $sshArgs = @(
 )
 
 Write-Host "Connecting to $target and running one-shot bootstrap..."
-$remoteScript | & ssh @sshArgs
+$remoteScriptUnix = $remoteScript -replace "`r", ""
+$remoteScriptUnix | & ssh @sshArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Remote bootstrap failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "Bootstrap complete."
 Write-Host "Useful checks:"

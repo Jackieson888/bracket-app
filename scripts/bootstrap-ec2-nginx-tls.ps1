@@ -1,6 +1,7 @@
 param(
   [string]$KeyPath = "C:\Users\jscha\tvt-game-app\TVT_WS_GAME_KEY.pem",
-  [string]$Host = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
+  [Alias("Host")]
+  [string]$Ec2Host = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
   [string]$RemoteUser = "ubuntu",
   [string]$ServerName = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
   [int]$AppPort = 3000,
@@ -103,7 +104,7 @@ curl -I "http://127.0.0.1/" || true
 echo "Done."
 '@
 
-$target = "$RemoteUser@$Host"
+$target = "$RemoteUser@$Ec2Host"
 $sshArgs = @(
   "-i", $KeyPath,
   "-o", "StrictHostKeyChecking=accept-new",
@@ -112,7 +113,11 @@ $sshArgs = @(
 )
 
 Write-Host "Connecting to $target and configuring nginx proxy..."
-$remoteScript | & ssh @sshArgs
+$remoteScriptUnix = $remoteScript -replace "`r", ""
+$remoteScriptUnix | & ssh @sshArgs
+if ($LASTEXITCODE -ne 0) {
+  throw "Remote bootstrap failed with exit code $LASTEXITCODE"
+}
 
 Write-Host "Proxy bootstrap complete."
 if ($EnableTls) {
