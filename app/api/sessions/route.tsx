@@ -2,6 +2,8 @@ import clientPromise from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
 import generateSlug from "@/lib/slug";
 
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
 export async function POST(req: Request) {
   const session = await auth0.getSession();
   const body = await req.json(); // { bracketId }
@@ -49,6 +51,9 @@ export async function POST(req: Request) {
     roomStatus: "waiting",
     gameStateVersion: 0,
     roomSnapshotVersion: 0,
+    sessionTtlMs: SESSION_TTL_MS,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS),
     gameState: {
       round: 0,
       currentMatch: 0,
@@ -59,8 +64,12 @@ export async function POST(req: Request) {
       roundWinners: [],
       winner: null,
     },
-    createdAt: new Date(),
   };
+
+  await sessions.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: "sessionExpiresAt" },
+  );
 
   const result = await sessions.insertOne(doc);
 

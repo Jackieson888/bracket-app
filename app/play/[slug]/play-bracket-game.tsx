@@ -18,7 +18,6 @@ type Session = {
   >;
   [key: string]: unknown;
 };
-
 type RoomClient = {
   id: string;
   joinedAt: number;
@@ -29,9 +28,12 @@ type RoomState = {
   round: number;
   currentMatch: number;
   currentRoundItems: Array<{ _id: string; title: string }>;
+  matchSize?: number;
   votesByMatch?: Record<string, Record<string, { choice: number; at: number }>>;
   pendingVoteCount: number;
+  requiredVoteCount?: number;
   winner?: { _id: string; title: string } | null;
+  lastWinner?: { _id: string; title: string } | null;
 };
 
 export default function PlayBracketGame({ slug }: { slug: string }) {
@@ -53,21 +55,46 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [sessionLoading, setSessionLoading] = useState(true);
   const [participantId, setParticipantId] = useState("");
   const reconnectAttemptRef = useRef(0);
+  const participantStorageKey = `tvt-participant-id:${slug}`;
+
+  useEffect(() => {
+    setParticipantId("");
+  }, [slug]);
 
   const resolveParticipantId = () => {
     if (participantId) {
       return participantId;
     }
 
-    const key = "tvt-participant-id";
-    const existing = window.localStorage.getItem(key);
+    const readStoredId = () => {
+      try {
+        return window.sessionStorage.getItem(participantStorageKey);
+      } catch {
+        return null;
+      }
+    };
+
+    const writeStoredId = (value: string) => {
+      try {
+        window.sessionStorage.setItem(participantStorageKey, value);
+        return;
+      } catch {
+        try {
+          window.localStorage.setItem(participantStorageKey, value);
+        } catch {
+          // Ignore storage failures; the in-memory state will still work for this tab.
+        }
+      }
+    };
+
+    const existing = readStoredId();
     if (existing) {
       setParticipantId(existing);
       return existing;
     }
 
     const created = window.crypto.randomUUID();
-    window.localStorage.setItem(key, created);
+    writeStoredId(created);
     setParticipantId(created);
     return created;
   };
@@ -322,6 +349,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             setRoomStatus((current) => payload.roomStatus ?? current);
             setRoomState(payload.gameState);
           }
+
+          if (payload?.type === "room-expired") {
+            setRoomStatus("expired");
+            setRoomState(null);
+            setConnectionError(
+              payload?.message || "This room has expired. Start a new one.",
+            );
+          }
         } catch (error) {
           console.error("Error reading room state", error);
         }
@@ -449,6 +484,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     roomStatus === "completed" ||
     Boolean(roomState?.currentRoundItems?.length);
 
+  const roomExpired = roomStatus === "expired";
+
   if (sessionLoading) {
     return <div>Loading session...</div>;
   }
@@ -468,6 +505,19 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     return (
       <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
         <Typography color="error">This room is unavailable.</Typography>
+        <Button href="/play" variant="contained">
+          Back to Play
+        </Button>
+      </Box>
+    );
+  }
+
+  if (roomExpired) {
+    return (
+      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Typography color="error">
+          This bracket session expired after 30 minutes.
+        </Typography>
         <Button href="/play" variant="contained">
           Back to Play
         </Button>

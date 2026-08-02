@@ -3,12 +3,33 @@ import clientPromise from "@/lib/mongodb";
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
 
+const SESSION_TTL_MS = 30 * 60 * 1000;
+
 interface Params {
   slug: string;
 }
 
 interface RouteContext {
   params: Promise<Params>;
+}
+
+function isExpired(expiresAt: unknown, createdAt?: unknown) {
+  const expiresAtMs = expiresAt
+    ? new Date(expiresAt as string | number | Date).getTime()
+    : Number.NaN;
+
+  if (Number.isFinite(expiresAtMs)) {
+    return expiresAtMs <= Date.now();
+  }
+
+  if (!createdAt) {
+    return false;
+  }
+
+  const createdAtMs = new Date(createdAt as string | number | Date).getTime();
+  return Number.isFinite(createdAtMs)
+    ? createdAtMs + SESSION_TTL_MS <= Date.now()
+    : false;
 }
 
 export async function GET(
@@ -24,6 +45,11 @@ export async function GET(
 
     if (!result) {
       return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    if (isExpired(result.expiresAt, result.createdAt)) {
+      await sessions.deleteOne({ slug });
+      return Response.json({ error: "Session expired" }, { status: 404 });
     }
 
     return Response.json(result);
@@ -56,6 +82,20 @@ export async function POST(
 
     const now = new Date();
 
+    const existingSession = await sessions.findOne(
+      { slug },
+      { projection: { expiresAt: 1, createdAt: 1 } },
+    );
+
+    if (!existingSession) {
+      return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    if (isExpired(existingSession.expiresAt, existingSession.createdAt)) {
+      await sessions.deleteOne({ slug });
+      return Response.json({ error: "Session expired" }, { status: 404 });
+    }
+
     const updateResult = await sessions.updateOne(
       { slug },
       {
@@ -78,6 +118,18 @@ export async function POST(
 
     if (updateResult.matchedCount === 0) {
       return Response.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const currentSession = await sessions.findOne(
+      { slug },
+      { projection: { expiresAt: 1, createdAt: 1 } },
+    );
+    if (
+      currentSession &&
+      isExpired(currentSession.expiresAt, currentSession.createdAt)
+    ) {
+      await sessions.deleteOne({ slug });
+      return Response.json({ error: "Session expired" }, { status: 404 });
     }
 
     const updated = await sessions.findOne(

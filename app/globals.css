@@ -92,6 +92,103 @@ samp {
   width: 100%;
 }
 
+.bracket-round-panel--visible {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 220ms ease,
+    visibility 220ms ease;
+}
+
+.bracket-round-panel--hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.bracket-intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 19, 19, 0.88);
+  backdrop-filter: blur(10px);
+}
+
+.bracket-intro-stage {
+  width: min(100%, 1100px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.bracket-intro-card {
+  width: min(100%, 880px);
+  align-self: center;
+  transform: scale(0.92);
+  opacity: 0;
+  transition:
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 260ms ease,
+    width 260ms ease;
+}
+
+.bracket-intro-card.is-active {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.bracket-intro-card--card1 {
+  width: min(100%, 980px);
+}
+
+.bracket-intro-card--card1 .MuiCard-root {
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.bracket-intro-card--card2 {
+  width: min(100%, 820px);
+}
+
+.bracket-intro-card img {
+  display: block;
+  width: auto !important;
+  max-width: 100% !important;
+  max-height: min(72vh, 760px) !important;
+  height: auto !important;
+  object-fit: contain;
+}
+
+.bracket-intro-vs {
+  margin: 0;
+  align-self: center;
+  opacity: 0;
+  transform: scale(0.9) translateY(6px);
+  transition:
+    opacity 240ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+  text-transform: uppercase;
+  color: var(--foreground);
+  text-shadow: 4px 4px 0 rgba(167, 62, 38, 0.45);
+}
+
+.bracket-intro-vs.is-active {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.bracket-intro-overlay .bracket-round-item__card {
+  width: 100%;
+}
+
 @keyframes bracketRoundPanelEnter {
   from {
     opacity: 0;
@@ -205,6 +302,20 @@ samp {
   }
 }
 
+@keyframes bracketIntroOverlayEnter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.bracket-intro-overlay {
+  animation: bracketIntroOverlayEnter 220ms ease both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bracket-round-panel,
   .bracket-round-header,
@@ -217,5 +328,13 @@ samp {
     animation: none !important;
     transform: none !important;
     filter: none !important;
+  }
+
+  .bracket-intro-overlay,
+  .bracket-intro-card,
+  .bracket-intro-vs,
+  .bracket-round-panel--visible {
+    animation: none !important;
+    transition: none !important;
   }
 }

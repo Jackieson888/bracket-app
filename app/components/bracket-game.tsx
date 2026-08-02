@@ -7,17 +7,16 @@ import {
   type ComponentProps,
   type CSSProperties,
 } from "react";
-import {
-  Box,
-  Typography,
-  Stack,
-  Container,
-  Chip,
-  Divider,
-} from "@mui/material";
+import { Box, Container, Divider, Stack, Typography } from "@mui/material";
+
 import GameItemCard from "./game-item-card";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
+
+type MatchVote = {
+  choice: number;
+  at: number;
+};
 
 type BracketGameProps = {
   bracket?: {
@@ -30,13 +29,12 @@ type BracketGameProps = {
     round?: number;
     currentMatch?: number;
     currentRoundItems?: Item[];
-    votesByMatch?: Record<
-      string,
-      Record<string, { choice: number; at: number }>
-    >;
+    matchSize?: number;
+    votesByMatch?: Record<string, Record<string, MatchVote>>;
     pendingVoteCount?: number;
     requiredVoteCount?: number;
     winner?: Item | null;
+    lastWinner?: Item | null;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
   playerCount?: number;
@@ -44,44 +42,130 @@ type BracketGameProps = {
 
 export default function BracketGame({
   bracket,
-  slug,
-  session,
   roomState,
   onVote,
-  playerCount = 2,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
   const [currentRoundItems, setCurrentRoundItems] = useState<Item[]>(
     () => bracket?.items ?? [],
   );
-  const [voteSummary, setVoteSummary] = useState<string>("Waiting for votes");
+  const [voteSummary, setVoteSummary] = useState("Waiting for votes");
+  const [showIntro, setShowIntro] = useState(false);
+  const [introPhase, setIntroPhase] = useState<"card1" | "vs" | "card2">(
+    "card1",
+  );
+  const [introKey, setIntroKey] = useState(0);
+  const [boardVisible, setBoardVisible] = useState(true);
+  const [recentWinner, setRecentWinner] = useState<string | null>(null);
 
   useEffect(() => {
     if (roomState?.currentRoundItems?.length) {
       setCurrentRoundItems(roomState.currentRoundItems);
     }
+
     if (typeof roomState?.round === "number") {
       setRound(roomState.round);
     }
+
     if (typeof roomState?.currentMatch === "number") {
       setCurrentMatch(roomState.currentMatch);
     }
   }, [roomState]);
+
+  const matchSize = Math.max(2, roomState?.matchSize ?? 2);
+  const startIndex = currentMatch * matchSize;
+  const activeMatchItems = currentRoundItems.slice(
+    startIndex,
+    startIndex + matchSize,
+  );
+  const left = activeMatchItems[0] ?? null;
+  const right = activeMatchItems[1] ?? null;
+  const matchKey = `${round}:${currentMatch}`;
+  const currentMatchVotes = roomState?.votesByMatch?.[matchKey] ?? null;
+  const leftIndex = startIndex;
+  const rightIndex = startIndex + 1;
+  const leftVoteCount = countVotesForChoice(currentMatchVotes, leftIndex);
+  const rightVoteCount = right
+    ? countVotesForChoice(currentMatchVotes, rightIndex)
+    : null;
+
+  const winnerIndex = useMemo(() => {
+    if (!roomState?.winner) {
+      return null;
+    }
+
+    if (roomState.winner.title === left?.title) {
+      return leftIndex;
+    }
+
+    if (roomState.winner.title === right?.title) {
+      return rightIndex;
+    }
+
+    return null;
+  }, [left?.title, leftIndex, right?.title, rightIndex, roomState?.winner]);
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
       return;
     }
 
-    const votePayload = {
+    onVote({
       round,
       match: currentMatch,
       choice: index,
-    };
-
-    onVote(votePayload);
+    });
   };
+
+  useEffect(() => {
+    if (currentRoundItems.length <= 1) {
+      setShowIntro(false);
+      setBoardVisible(true);
+      return;
+    }
+
+    if (!left) {
+      return;
+    }
+
+    setIntroKey((value) => value + 1);
+    setIntroPhase("card1");
+    setShowIntro(true);
+    setBoardVisible(false);
+
+    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 900);
+    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 1600);
+    const boardTimer = window.setTimeout(() => {
+      setShowIntro(false);
+      setBoardVisible(true);
+    }, 2600);
+
+    return () => {
+      window.clearTimeout(card1Timer);
+      window.clearTimeout(card2Timer);
+      window.clearTimeout(boardTimer);
+    };
+  }, [
+    currentMatch,
+    currentRoundItems.length,
+    left?.title,
+    round,
+    right?.title,
+  ]);
+
+  useEffect(() => {
+    if (!roomState?.lastWinner?.title) {
+      return;
+    }
+
+    setRecentWinner(roomState.lastWinner.title);
+    const timer = window.setTimeout(() => {
+      setRecentWinner(null);
+    }, 1800);
+
+    return () => window.clearTimeout(timer);
+  }, [roomState?.lastWinner?.title]);
 
   useEffect(() => {
     if (currentRoundItems.length <= 1) {
@@ -91,63 +175,29 @@ export default function BracketGame({
 
     const totalVotes = roomState?.pendingVoteCount ?? 0;
     const requiredVotes =
-      roomState?.requiredVoteCount ?? Math.max(1, Math.min(2, playerCount));
-    const votesRemaining = Math.max(0, requiredVotes - totalVotes);
+      roomState?.requiredVoteCount ?? Math.max(2, totalVotes);
 
-    setVoteSummary(
-      totalVotes >= requiredVotes
-        ? "Votes received. Moving to the next matchup."
-        : `Waiting for ${votesRemaining} more vote${votesRemaining === 1 ? "" : "s"}`,
-    );
+    setVoteSummary(`${totalVotes}/${requiredVotes} votes cast`);
   }, [
     currentRoundItems.length,
-    playerCount,
     roomState?.pendingVoteCount,
     roomState?.requiredVoteCount,
   ]);
 
-  const leftIndex = currentMatch * 2;
-  const rightIndex = leftIndex + 1;
-  const left = currentRoundItems[leftIndex];
-  const right = currentRoundItems[rightIndex];
-  const requiredVotes =
-    roomState?.requiredVoteCount ?? Math.max(1, Math.min(2, playerCount));
-  const totalVotes = roomState?.pendingVoteCount ?? 0;
-  const currentMatchVotes = roomState?.votesByMatch?.[currentMatch] ?? null;
-  const matchupAnimationKey = `${round}:${currentMatch}:${left?.title ?? "left"}:${right?.title ?? "right"}:${currentRoundItems.length}`;
-
-  const winnerIndex = useMemo(() => {
-    if (!currentRoundItems.length) {
-      return null;
-    }
-
-    if (currentRoundItems.length === 1) {
-      return 0;
-    }
-
-    if (!left) {
-      return null;
-    }
-
-    if (!right) {
-      return leftIndex;
-    }
-
-    if (totalVotes < requiredVotes || !currentMatchVotes) {
-      return null;
-    }
-
-    return resolveWinningChoice(currentMatchVotes, leftIndex, rightIndex);
-  }, [
-    currentMatchVotes,
-    currentRoundItems.length,
-    left,
-    leftIndex,
-    requiredVotes,
-    right,
-    rightIndex,
-    totalVotes,
-  ]);
+  if (!currentRoundItems.length) {
+    return (
+      <Container>
+        <Box sx={{ padding: 2 }}>
+          <Typography variant="h5">
+            {bracket?.title || "Bracket Game"}
+          </Typography>
+          <Typography sx={{ mt: 2 }}>
+            No bracket items are available.
+          </Typography>
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container>
@@ -159,9 +209,12 @@ export default function BracketGame({
           padding: "8px",
         }}
       >
-        <Stack>
+        <Stack spacing={1}>
           <Typography variant="h5">
             {bracket?.title || "Bracket Game"}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {voteSummary}
           </Typography>
           <Divider
             sx={{
@@ -171,7 +224,8 @@ export default function BracketGame({
             }}
           />
         </Stack>
-        {currentRoundItems.length === 1 && (
+
+        {currentRoundItems.length === 1 ? (
           <Box
             className="bracket-round-panel"
             sx={{ textAlign: "center", mt: 4 }}
@@ -204,17 +258,16 @@ export default function BracketGame({
               <GameItemCard
                 item={currentRoundItems[0]}
                 index={0}
-                handleVote={null as any}
+                handleVote={handleVote}
                 votes={null}
                 className="bracket-round-item__card"
               />
             </Box>
           </Box>
-        )}
-        {currentRoundItems.length > 1 && (
+        ) : (
           <Box
-            key={matchupAnimationKey}
-            className="bracket-round-panel"
+            key={matchKey}
+            className={`bracket-round-panel${boardVisible ? " bracket-round-panel--visible" : " bracket-round-panel--hidden"}`}
             sx={{ textAlign: "center", mt: 1 }}
           >
             <Stack
@@ -264,16 +317,15 @@ export default function BracketGame({
                   } as CSSProperties
                 }
               >
-                <GameItemCard
-                  item={left}
-                  index={leftIndex}
-                  handleVote={handleVote}
-                  votes={
-                    roomState?.votesByMatch?.[currentMatch]?.[left.title ?? ""]
-                      ?.choice ?? null
-                  }
-                  className="bracket-round-item__card"
-                />
+                {left ? (
+                  <GameItemCard
+                    item={left}
+                    index={leftIndex}
+                    handleVote={handleVote}
+                    votes={leftVoteCount}
+                    className="bracket-round-item__card"
+                  />
+                ) : null}
               </Box>
 
               {right ? (
@@ -303,45 +355,86 @@ export default function BracketGame({
                     item={right}
                     index={rightIndex}
                     handleVote={handleVote}
-                    votes={
-                      roomState?.votesByMatch?.[currentMatch]?.[
-                        right.title ?? ""
-                      ]?.choice ?? null
-                    }
+                    votes={rightVoteCount}
                     className="bracket-round-item__card"
                   />
                 </Box>
               ) : null}
             </Stack>
+
+            {recentWinner ? (
+              <Typography
+                variant="h4"
+                sx={{
+                  mt: 2,
+                  color: (theme) => theme.palette.background.paper,
+                  textAlign: "center",
+                  textShadow: "3px 3px 0 #A73E26",
+                }}
+              >
+                Winner: {recentWinner}
+              </Typography>
+            ) : null}
           </Box>
         )}
+
+        {showIntro && left ? (
+          <Box className="bracket-intro-overlay">
+            <Box className="bracket-intro-stage">
+              <Box
+                key={`${introKey}-card1`}
+                className={`bracket-intro-card bracket-intro-card--card1${introPhase === "card1" ? " is-active" : ""}`}
+              >
+                <GameItemCard
+                  item={left}
+                  index={leftIndex}
+                  handleVote={handleVote}
+                  votes={leftVoteCount}
+                  className="bracket-round-item__card"
+                />
+              </Box>
+
+              {introPhase !== "card1" ? (
+                <Typography
+                  key={`${introKey}-vs`}
+                  className={`bracket-intro-vs${introPhase === "vs" || introPhase === "card2" ? " is-active" : ""}`}
+                  variant="h3"
+                >
+                  vs
+                </Typography>
+              ) : null}
+
+              {introPhase === "card2" && right ? (
+                <Box
+                  key={`${introKey}-card2`}
+                  className="bracket-intro-card bracket-intro-card--card2 is-active"
+                >
+                  <GameItemCard
+                    item={right}
+                    index={rightIndex}
+                    handleVote={handleVote}
+                    votes={rightVoteCount}
+                    className="bracket-round-item__card"
+                  />
+                </Box>
+              ) : null}
+            </Box>
+          </Box>
+        ) : null}
       </Box>
     </Container>
   );
 }
 
-function resolveWinningChoice(
-  matchVotes: Record<string, { choice: number; at: number }>,
-  leftIndex: number,
-  rightIndex: number,
+function countVotesForChoice(
+  matchVotes: Record<string, MatchVote> | null,
+  choice: number,
 ) {
-  const tally = {
-    [leftIndex]: 0,
-    [rightIndex]: 0,
-  };
-
-  Object.values(matchVotes).forEach((vote) => {
-    if (vote?.choice === rightIndex) {
-      tally[rightIndex] += 1;
-      return;
-    }
-
-    tally[leftIndex] += 1;
-  });
-
-  if (tally[rightIndex] > tally[leftIndex]) {
-    return rightIndex;
+  if (!matchVotes) {
+    return 0;
   }
 
-  return leftIndex;
+  return Object.values(matchVotes).reduce((count, vote) => {
+    return vote?.choice === choice ? count + 1 : count;
+  }, 0);
 }

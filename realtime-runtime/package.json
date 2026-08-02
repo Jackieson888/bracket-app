@@ -1,0 +1,12 @@
+{
+  "name": "tvt-game-realtime-runtime",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "mongodb": "^7.5.0",
+    "ws": "^8.21.1"
+  }
+}

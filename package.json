@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "node server.js",
     "dev:next": "next dev",
-    "dev:ws": "node server.js",
+    "dev:ws": "node ws-server.js",
     "build": "next build",
     "start": "node server.js",
+    "start:ws": "node ws-server.js",
     "lint": "eslint ."
   },
   "dependencies": {

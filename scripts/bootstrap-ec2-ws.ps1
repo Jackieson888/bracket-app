@@ -4,7 +4,9 @@ param(
   [string]$RemoteUser = "ubuntu",
   [string]$AppDir = "/home/ubuntu/tvt-game-app",
   [string]$NodeVersion = "20",
-  [string]$RepoUrl = ""
+  [string]$RepoUrl = "",
+  [string]$Branch = "main",
+  [string]$LocalEnvFile = ".\realtime-runtime\.env.production"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,9 +15,22 @@ if (-not (Test-Path -LiteralPath $KeyPath)) {
   throw "Private key not found at: $KeyPath"
 }
 
+if (-not (Test-Path -LiteralPath $LocalEnvFile)) {
+  throw "Runtime env file not found at: $LocalEnvFile"
+}
+
 Write-Host "Hardening key permissions..."
 icacls $KeyPath /inheritance:r | Out-Null
 icacls $KeyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+$resolvedEnvFile = (Resolve-Path -LiteralPath $LocalEnvFile).Path
+$remoteEnvPath = "/tmp/tvt-game-ws.env"
+
+Write-Host "Uploading runtime env file to $Host..."
+& scp -i $KeyPath -o StrictHostKeyChecking=accept-new $resolvedEnvFile "$($RemoteUser)@$Host`:$remoteEnvPath"
+if ($LASTEXITCODE -ne 0) {
+  throw "Failed to upload runtime env file to $Host"
+}
 
 $remoteScript = @'
 set -euo pipefail
@@ -23,12 +38,15 @@ set -euo pipefail
 APP_DIR="$1"
 NODE_VERSION="$2"
 REPO_URL="${3:-}"
+BRANCH="${4:-main}"
+REMOTE_ENV_PATH="${5:-/tmp/tvt-game-ws.env}"
+SYSTEMD_ENV_PATH="/etc/tvt-game-ws.env"
 
-echo "[1/8] Installing base packages..."
+echo "[1/10] Installing base packages..."
 sudo apt-get update -y
 sudo apt-get install -y curl git
 
-echo "[2/8] Installing nvm/node if needed..."
+echo "[2/10] Installing nvm/node if needed..."
 if [ ! -d "$HOME/.nvm" ]; then
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 fi
@@ -38,7 +56,7 @@ source "$HOME/.nvm/nvm.sh"
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
-echo "[3/8] Ensuring app directory exists..."
+echo "[3/10] Ensuring app directory exists..."
 if [ ! -d "$APP_DIR" ]; then
   if [ -n "$REPO_URL" ]; then
     git clone "$REPO_URL" "$APP_DIR"
@@ -51,26 +69,46 @@ fi
 
 cd "$APP_DIR"
 
-echo "[4/8] Installing dependencies..."
+if [ -d "$APP_DIR/.git" ]; then
+  echo "[4/10] Updating repository checkout..."
+  git config --global --add safe.directory "$APP_DIR"
+  git fetch --all --prune
+  git checkout "$BRANCH"
+  git pull --ff-only origin "$BRANCH"
+else
+  echo "[4/10] Skipping git update because $APP_DIR is not a git checkout."
+fi
+
+echo "[5/10] Installing runtime environment file..."
+if [ ! -f "$REMOTE_ENV_PATH" ]; then
+  echo "Missing uploaded env file at $REMOTE_ENV_PATH"
+  exit 1
+fi
+sudo install -m 600 -o root -g root "$REMOTE_ENV_PATH" "$SYSTEMD_ENV_PATH"
+rm -f "$REMOTE_ENV_PATH"
+
+echo "[6/10] Installing realtime runtime dependencies..."
+cd "$APP_DIR/realtime-runtime"
 npm ci
 
-echo "[5/8] Building app..."
-npm run build
+echo "[7/10] Realtime runtime ready (no Next.js build required)."
 
-echo "[6/8] Creating systemd unit for websocket runtime..."
+echo "[8/10] Creating systemd unit for websocket runtime..."
 NODE_BIN="$(command -v node)"
 
 sudo tee /etc/systemd/system/tvt-game-ws.service > /dev/null <<EOF
 [Unit]
-Description=TVT Game WebSocket/Next Runtime
+Description=TVT Game WebSocket Runtime
 After=network.target
 
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$APP_DIR
+WorkingDirectory=$APP_DIR/realtime-runtime
+EnvironmentFile=-$SYSTEMD_ENV_PATH
 Environment=NODE_ENV=production
-ExecStart=$NODE_BIN server.js
+Environment=PORT=3000
+ExecStart=$NODE_BIN $APP_DIR/realtime-runtime/server.js
 Restart=always
 RestartSec=5
 
@@ -78,13 +116,14 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-echo "[7/8] Enabling and starting service..."
+echo "[9/10] Enabling and starting service..."
 sudo systemctl daemon-reload
 sudo systemctl enable tvt-game-ws
 sudo systemctl restart tvt-game-ws
 
-echo "[8/8] Service status:"
+echo "[10/10] Validating service health..."
 systemctl --no-pager --full status tvt-game-ws || true
+curl --fail --silent http://127.0.0.1:3000/health
 
 echo "Done."
 '@
@@ -94,7 +133,7 @@ $sshArgs = @(
   "-i", $KeyPath,
   "-o", "StrictHostKeyChecking=accept-new",
   $target,
-  "bash", "-s", "--", $AppDir, $NodeVersion, $RepoUrl
+  "bash", "-s", "--", $AppDir, $NodeVersion, $RepoUrl, $Branch, $remoteEnvPath
 )
 
 Write-Host "Connecting to $target and running one-shot bootstrap..."
