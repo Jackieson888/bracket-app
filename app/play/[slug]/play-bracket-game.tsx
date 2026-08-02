@@ -243,12 +243,20 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       if (configuredWsBaseUrl) {
         const normalizedBase = configuredWsBaseUrl.replace(/\/+$/, "");
         const configuredUrl = new URL(normalizedBase);
-        const configuredProtocol =
+        let configuredProtocol =
           configuredUrl.protocol === "https:"
             ? "wss:"
             : configuredUrl.protocol === "http:"
               ? "ws:"
               : configuredUrl.protocol;
+
+        // Browsers block ws:// from secure origins, so upgrade protocol here.
+        if (
+          window.location.protocol === "https:" &&
+          configuredProtocol === "ws:"
+        ) {
+          configuredProtocol = "wss:";
+        }
 
         wsUrl = new URL(`${configuredProtocol}//${configuredUrl.host}/ws`);
       } else {
