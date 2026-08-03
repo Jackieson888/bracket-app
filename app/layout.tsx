@@ -9,6 +9,7 @@ import theme from "../src/theme";
 import UserProvider from "./user-provider";
 import { Container, Box } from "@mui/material";
 import NavBar from "./components/nav-bar";
+import BottomNav from "./components/bottom-nav";
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
   let user = null;
@@ -39,11 +40,13 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
                     flexDirection: "column",
                     justifyContent: "center",
                     alignItems: "center",
+                    paddingBottom: "72px",
                   }}
                 >
                   {props.children}
                 </Box>
               </Container>
+              <BottomNav />
             </ThemeProvider>
           </AppRouterCacheProvider>
         </UserProvider>
