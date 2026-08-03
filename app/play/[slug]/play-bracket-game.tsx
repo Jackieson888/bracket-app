@@ -1,20 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Stack,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Typography } from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
+import PillLabel from "@/app/components/pill-label";
 import { useUser } from "@/app/user-provider";
+import { initialsFor, swatchForIndex } from "@/lib/avatar";
 import { CheckCircle, ContentCopy } from "@mui/icons-material";
 
 type Session = {
@@ -22,6 +13,7 @@ type Session = {
   slug?: string;
   roomStatus?: string;
   gameState?: RoomState;
+  hostParticipantId?: string | null;
   participantLookup?: Record<
     string,
     { participantId: string; displayName?: string; joinedAt?: string | number }
@@ -65,6 +57,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [sessionError, setSessionError] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
   const [participantId, setParticipantId] = useState("");
+  const [hostParticipantId, setHostParticipantId] = useState<string | null>(null);
   const [joinLoading, setJoinLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const [roomCopied, setRoomCopied] = useState(false);
@@ -161,6 +154,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         }
         if (data.gameState) {
           setRoomState(data.gameState);
+        }
+        if (data.hostParticipantId) {
+          setHostParticipantId(data.hostParticipantId);
         }
         if (data.participantLookup) {
           const hydratedClients = Object.values(data.participantLookup)
@@ -388,6 +384,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             if (payload.gameState) {
               setRoomState(payload.gameState);
             }
+            if (payload.hostParticipantId) {
+              setHostParticipantId(payload.hostParticipantId);
+            }
           }
 
           if (payload?.type === "game-started") {
@@ -480,7 +479,15 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  const isHost = Boolean(
+    participantId && hostParticipantId && participantId === hostParticipantId,
+  );
+
   const handleStartGame = () => {
+    if (!isHost) {
+      return;
+    }
+
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       setConnectionError("Waiting for real-time connection before starting.");
       return;
@@ -579,15 +586,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   };
 
   const joinedLabel = useMemo(() => {
-    if (clients.length === 0) {
-      return "Waiting for another player to join";
-    }
-
-    if (clients.length === 1) {
-      return "1 player connected";
-    }
-
-    return `${clients.length} players connected`;
+    return clients.length === 1
+      ? "1 PLAYER CONNECTED"
+      : `${clients.length} PLAYERS CONNECTED`;
   }, [clients.length]);
 
   const hasGameStarted =
@@ -675,92 +676,321 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     <>
       {!hasGameStarted ? (
         <Box
+          className="bracket-shell"
           sx={{
+            padding: "24px 18px 28px",
             display: "flex",
             flexDirection: "column",
-            gap: { xs: 1.75, sm: 2.25 },
-            borderRadius: 3,
-            p: { xs: 1.75, sm: 2.25 },
-            border: "1px solid",
-            borderColor: "divider",
-            backgroundColor: "rgba(255,255,255,0.03)",
+            gap: "18px",
           }}
         >
-          <Typography variant="subtitle1">
-            Waiting room is live. Set your name, confirm the roster, then start.
-          </Typography>
-
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Chip label={slug} color="secondary" />
-            <Tooltip title={roomCopied ? "Copied" : "Copy room code"}>
-              <IconButton
-                aria-label="Copy room code"
-                color={roomCopied ? "success" : "default"}
-                onClick={handleCopyRoomCode}
-                size="small"
-              >
-                {roomCopied ? (
-                  <CheckCircle fontSize="small" />
-                ) : (
-                  <ContentCopy fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-          </Stack>
-
-          <Stack
-            direction="row"
-            spacing={1}
-            sx={{ flexWrap: "wrap", rowGap: 1 }}
-          >
-            <Chip label={joinedLabel} color="primary" variant="outlined" />
-            {pendingVotes.length > 0 ? (
-              <Chip
-                label={`${pendingVotes.length} queued vote${pendingVotes.length > 1 ? "s" : ""}`}
-                color="warning"
-                variant="outlined"
-              />
-            ) : null}
-          </Stack>
+          <Box className="bracket-pop-in" sx={{ textAlign: "center" }}>
+            <Typography
+              sx={{
+                fontFamily: "var(--font-display)",
+                fontSize: "26px",
+                letterSpacing: "1px",
+                color: "var(--peach)",
+                textShadow: "0 0 18px rgba(240,198,159,0.3)",
+              }}
+            >
+              WAITING ROOM
+            </Typography>
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "12px",
+                letterSpacing: "3px",
+                color: "text.secondary",
+                mt: "3px",
+              }}
+            >
+              SET YOUR NAME, THEN GET READY
+            </Typography>
+          </Box>
 
           <Box
+            className="bracket-pop-in"
             sx={{
               display: "flex",
-              flexWrap: "wrap",
-              gap: 1.25,
               alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              flexWrap: "wrap",
             }}
           >
-            <TextField
-              size="small"
-              label="Display name"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Guest"
-              helperText="This is what other players will see."
-              sx={{ minWidth: { xs: "100%", sm: 280 } }}
-            />
-            <Button
-              variant="contained"
-              onClick={handleJoinRoom}
-              disabled={!canUseSocket || joinLoading || startLoading}
+            <Box
+              role="button"
+              aria-label={roomCopied ? "Room code copied" : "Copy room code"}
+              onClick={handleCopyRoomCode}
+              sx={{
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "8px 16px",
+                borderRadius: "999px",
+                backgroundColor: "rgba(230,163,184,0.15)",
+                border: "1px solid rgba(230,163,184,0.3)",
+              }}
             >
-              {joinLoading ? "Saving Name..." : "Update Name"}
-            </Button>
-            <Button
-              variant="contained"
-              onClick={handleStartGame}
-              disabled={!canUseSocket || startLoading || joinLoading}
+              <Typography
+                sx={{
+                  fontFamily: "var(--font-mono-ui)",
+                  fontSize: "15px",
+                  letterSpacing: "3px",
+                  color: "var(--pink)",
+                  fontWeight: 700,
+                }}
+              >
+                {slug}
+              </Typography>
+              {roomCopied ? (
+                <CheckCircle sx={{ fontSize: 14, color: "var(--teal)" }} />
+              ) : (
+                <ContentCopy sx={{ fontSize: 13, color: "var(--pink)" }} />
+              )}
+            </Box>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                borderRadius: "999px",
+                backgroundColor: "rgba(255,255,255,0.05)",
+              }}
             >
-              {startLoading ? "Starting..." : "Start Game"}
-            </Button>
+              <Box className="bracket-synced-dot" sx={{ backgroundColor: "var(--teal)" }} />
+              <Typography
+                sx={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "11px",
+                  letterSpacing: "1.5px",
+                  color: "text.secondary",
+                }}
+              >
+                {joinedLabel}
+              </Typography>
+            </Box>
           </Box>
 
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.25, mt: 0.75 }}>
-            {clients.map((client) => (
-              <Chip key={client.id} label={client.displayName || "Guest"} />
-            ))}
+          <Box className="bracket-pop-in" sx={{ position: "relative" }}>
+            <PillLabel>DISPLAY NAME</PillLabel>
+            <Box
+              sx={{
+                backgroundColor: "var(--card-elevated)",
+                borderRadius: "18px",
+                border: "1px solid rgba(255,255,255,0.06)",
+                padding: "20px 16px 16px",
+                display: "flex",
+                alignItems: "stretch",
+                gap: "12px",
+              }}
+            >
+              <Box
+                component="input"
+                value={displayName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setDisplayName(e.target.value)
+                }
+                placeholder="Guest"
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  borderBottom: "2px solid rgba(230,163,184,0.4)",
+                  paddingBottom: "8px",
+                  fontFamily: "var(--font-body)",
+                  fontWeight: 600,
+                  fontSize: "16px",
+                  color: "text.primary",
+                }}
+              />
+              <Box
+                role="button"
+                onClick={() => {
+                  if (canUseSocket && !joinLoading && !startLoading) {
+                    void handleJoinRoom();
+                  }
+                }}
+                sx={{
+                  cursor: canUseSocket && !joinLoading && !startLoading ? "pointer" : "default",
+                  opacity: canUseSocket && !joinLoading && !startLoading ? 1 : 0.5,
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 16px",
+                  borderRadius: "12px",
+                  backgroundColor: "var(--lav)",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "12px",
+                    letterSpacing: "1.5px",
+                    color: "#241c34",
+                  }}
+                >
+                  {joinLoading ? "SAVING..." : "UPDATE"}
+                </Typography>
+              </Box>
+            </Box>
           </Box>
+
+          <Box sx={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "12px",
+                letterSpacing: "2px",
+                color: "text.secondary",
+                pl: "2px",
+              }}
+            >
+              ROSTER · {clients.length}
+            </Typography>
+            <Box sx={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              {clients.map((client, idx) => (
+                <Box
+                  key={client.id}
+                  sx={{
+                    animation: "avatarPop 180ms ease-out both",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "7px",
+                    padding: "7px 12px 7px 7px",
+                    borderRadius: "999px",
+                    backgroundColor: "var(--card-elevated)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: "22px",
+                      height: "22px",
+                      borderRadius: "50%",
+                      backgroundColor: swatchForIndex(idx),
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontFamily: "var(--font-heading)",
+                      fontSize: "10px",
+                      color: "#241c34",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {initialsFor(client.displayName || "Guest")}
+                  </Box>
+                  <Typography
+                    sx={{
+                      fontFamily: "var(--font-body)",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      color: "text.primary",
+                    }}
+                  >
+                    {client.displayName || "Guest"}
+                  </Typography>
+                  {hostParticipantId && client.id === hostParticipantId ? (
+                    <Typography
+                      sx={{
+                        fontFamily: "var(--font-heading)",
+                        fontSize: "9px",
+                        letterSpacing: "1px",
+                        color: "var(--peach)",
+                      }}
+                    >
+                      HOST
+                    </Typography>
+                  ) : null}
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          {pendingVotes.length > 0 ? (
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "11px",
+                letterSpacing: "1.5px",
+                color: "text.secondary",
+                textAlign: "center",
+              }}
+            >
+              {pendingVotes.length} QUEUED VOTE{pendingVotes.length > 1 ? "S" : ""}
+            </Typography>
+          ) : null}
+
+          {isHost ? (
+            <Box
+              role="button"
+              onClick={() => {
+                if (canUseSocket && !startLoading) {
+                  handleStartGame();
+                }
+              }}
+              className="bracket-glow-pulse"
+              sx={{
+                cursor: canUseSocket && !startLoading ? "pointer" : "default",
+                opacity: canUseSocket && !startLoading ? 1 : 0.6,
+                textAlign: "center",
+                padding: "16px",
+                borderRadius: "16px",
+                backgroundColor: "var(--peach)",
+                mt: "4px",
+              }}
+            >
+              <Typography
+                sx={{
+                  fontFamily: "var(--font-display)",
+                  fontSize: "17px",
+                  letterSpacing: "1px",
+                  color: "#241c34",
+                }}
+              >
+                {startLoading ? "STARTING..." : "START GAME"}
+              </Typography>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                textAlign: "center",
+                padding: "16px",
+                borderRadius: "16px",
+                border: "1.5px dashed var(--sub)",
+                mt: "4px",
+              }}
+            >
+              <Box
+                sx={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  backgroundColor: "var(--sub)",
+                  animation: "pulseSoft 1.6s ease-in-out infinite",
+                }}
+              />
+              <Typography
+                sx={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "13px",
+                  letterSpacing: "1.5px",
+                  color: "text.secondary",
+                }}
+              >
+                WAITING FOR HOST TO START...
+              </Typography>
+            </Box>
+          )}
         </Box>
       ) : null}
 
@@ -778,6 +1008,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           )}
           roomState={roomState ?? undefined}
           onVote={handleVote}
+          onPlayAgain={handleStartGame}
+          isHost={isHost}
           playerCount={Math.max(1, clients.length)}
         />
       ) : null}

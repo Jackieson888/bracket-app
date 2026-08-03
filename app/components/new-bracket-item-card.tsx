@@ -1,17 +1,7 @@
 "use client";
 
-import {
-  styled,
-  Box,
-  Card,
-  CardContent,
-  IconButton,
-  TextField,
-} from "@mui/material";
-import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import { styled, Box, TextField } from "@mui/material";
 import React, { useState } from "react";
-import { Add } from "@mui/icons-material";
-import Image from "next/image";
 
 const HiddenInput = styled("input")({
   display: "none",
@@ -32,28 +22,11 @@ export default function NewBracketItemCard({
   const [title, setTitle] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewSize, setPreviewSize] = useState<{
-    width: number;
-    height: number;
-  }>({ width: 0, height: 0 });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
-
     setFile(selected);
-
-    // Create preview URL
-    const url = URL.createObjectURL(selected);
-    setPreviewUrl(url);
-
-    // Extract width/height
-    const img = new window.Image();
-    img.onload = () => {
-      setPreviewSize({ width: img.width, height: img.height });
-    };
-    img.src = url;
   };
 
   const handleUpload = async (file: string | Blob) => {
@@ -82,7 +55,7 @@ export default function NewBracketItemCard({
   };
 
   const handleSubmit = async () => {
-    if (!title) return;
+    if (!title.trim()) return;
 
     let imageObj = null;
 
@@ -91,74 +64,128 @@ export default function NewBracketItemCard({
     }
 
     const newItem = {
-      title,
+      title: title.trim().toUpperCase(),
       ...imageObj,
     };
 
     onAddItem(newItem);
 
     setTitle("");
-    setPreviewUrl(null);
     setFile(null);
   };
 
   return (
-    <Card
+    <Box
       sx={{
         display: "flex",
-        maxHeight: "100px",
-        height: "100px",
-        width: "100%",
+        alignItems: "stretch",
+        backgroundColor: "rgba(44,36,64,0.55)",
+        border: "2px dashed var(--lav)",
+        borderRadius: "18px",
+        overflow: "hidden",
       }}
     >
       <Box
         sx={{
+          flex: 1,
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          width: "stretch",
+          alignItems: "center",
+          padding: "20px 14px 14px",
+          minWidth: 0,
         }}
       >
-        <CardContent sx={{ paddingY: 0 }}>
-          <TextField
-            hiddenLabel
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            fullWidth
-            variant="standard"
-          />
-        </CardContent>
-      </Box>
-      {previewUrl && (
-        <Image
-          src={previewUrl}
-          alt={title}
-          width={previewSize.width}
-          height={previewSize.height}
-          style={{ width: "auto", height: 100, borderRadius: 8 }}
+        <TextField
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              void handleSubmit();
+            }
+          }}
+          placeholder="Name this contender..."
+          variant="standard"
+          fullWidth
+          slotProps={{
+            input: {
+              disableUnderline: true,
+              sx: {
+                fontFamily: "var(--font-body)",
+                fontSize: "16px",
+                color: "text.primary",
+                borderBottom: "1px solid rgba(184,168,221,0.4)",
+                paddingBottom: "8px",
+              },
+            },
+          }}
         />
-      )}
+      </Box>
       <Box
         sx={{
+          width: "50px",
+          flexShrink: 0,
+          backgroundColor: "var(--peach)",
           display: "flex",
           flexDirection: "column",
+          alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#F0C69F",
+          gap: "8px",
         }}
       >
-        <IconButton aria-label="upload" color="secondary" component="label">
-          <CloudUploadIcon />
-          <HiddenInput type="file" onChange={handleFileSelect} />
-        </IconButton>
-        <IconButton
-          aria-label="add"
-          color="primary"
-          onClick={handleSubmit}
-          disabled={uploading}
+        <Box
+          component="label"
+          aria-label="Upload media"
+          sx={{
+            cursor: "pointer",
+            width: "28px",
+            height: "28px",
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: file ? 1 : 0.65,
+          }}
         >
-          <Add />
-        </IconButton>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M12 16V4m0 0-4 4m4-4 4 4"
+              stroke="#241c34"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
+              stroke="#241c34"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+          </svg>
+          <HiddenInput type="file" accept="image/*" onChange={handleFileSelect} />
+        </Box>
+        <Box
+          role="button"
+          aria-label="Add item"
+          onClick={() => {
+            if (!uploading) {
+              void handleSubmit();
+            }
+          }}
+          sx={{
+            cursor: uploading ? "default" : "pointer",
+            opacity: uploading ? 0.5 : 1,
+            width: "28px",
+            height: "28px",
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5v14M5 12h14" stroke="#241c34" strokeWidth="2.4" strokeLinecap="round" />
+          </svg>
+        </Box>
       </Box>
-    </Card>
+    </Box>
   );
 }

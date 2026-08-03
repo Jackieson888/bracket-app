@@ -489,6 +489,7 @@ function broadcastRoomState(slug) {
     clients: getRoomClients(slug),
     gameState: rooms.get(slug)?.gameState ?? null,
     roomStatus: rooms.get(slug)?.roomStatus ?? "waiting",
+    hostParticipantId: rooms.get(slug)?.hostParticipantId ?? null,
   });
 
   const room = rooms.get(slug);

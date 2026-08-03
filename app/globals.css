@@ -69,6 +69,44 @@ samp {
   animation: vsPop 200ms ease-out both;
 }
 
+/* Create bracket screen */
+
+.bracket-pop-in {
+  animation: popIn 200ms ease-out both;
+}
+
+/* Opacity-only variant for elements whose transform is already driven
+   elsewhere (e.g. dnd-kit sortable items) — animating transform here too
+   would fight dnd-kit's inline drag transform once the entrance settles. */
+.bracket-pop-in-fade {
+  animation: fadeIn 200ms ease-out both;
+}
+
+.bracket-glow-pulse {
+  animation: glowPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glowPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(240, 198, 159, 0);
+  }
+  50% {
+    box-shadow: 0 0 22px rgba(240, 198, 159, 0.28);
+  }
+}
+
 .bracket-synced-dot {
   width: 6px;
   height: 6px;
@@ -354,7 +392,271 @@ samp {
   }
 }
 
+/* Splash / title screen */
+
+.splash-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  background: var(--background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splash-bg-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 30%,
+    rgba(184, 168, 221, 0.16),
+    transparent 60%
+  );
+}
+
+.splash-sun {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--peach) 0%,
+    var(--pink) 48%,
+    var(--lav) 100%
+  );
+  animation: sunPulse 4s ease-in-out infinite;
+}
+
+.splash-sun-bars {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 55%;
+  background: repeating-linear-gradient(
+    0deg,
+    var(--background) 0 5px,
+    transparent 5px 12px
+  );
+}
+
+.splash-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 46%;
+  overflow: hidden;
+}
+
+.splash-grid-lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 220%;
+  background-image:
+    linear-gradient(rgba(230, 163, 184, 0.65) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(230, 163, 184, 0.65) 2px, transparent 2px);
+  background-size:
+    100% 34px,
+    34px 100%;
+  transform: perspective(600px) rotateX(38deg);
+  transform-origin: bottom;
+  animation: gridScroll 3s linear infinite;
+}
+
+.splash-grid-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, transparent 80%, var(--background) 100%);
+}
+
+.splash-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.12) 0 1px,
+    transparent 1px 4px
+  );
+  animation: scanShift 0.3s linear infinite;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.splash-particle {
+  position: absolute;
+  bottom: -20px;
+  border-radius: 50%;
+  animation-name: floatUp;
+  animation-timing-function: ease-in;
+  animation-iteration-count: infinite;
+}
+
+.splash-content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 0 32px;
+}
+
+.splash-wordmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  animation: logoPop 0.4s ease-out both;
+  filter: drop-shadow(0 0 22px rgba(240, 198, 159, 0.35));
+}
+
+.splash-wordmark-word {
+  font-family: var(--font-display);
+  font-size: 40px;
+  letter-spacing: 1px;
+  text-shadow: 3px 3px 0 var(--lav);
+}
+
+.splash-wordmark-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--peach);
+  flex-shrink: 0;
+  box-shadow: 3px 3px 0 var(--lav);
+}
+
+.splash-tagline {
+  text-align: center;
+  animation: tagFade 0.4s ease-out 0.1s both;
+}
+
+.splash-cta-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  animation: tagFade 0.4s ease-out 0.2s both;
+}
+
+.splash-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  text-align: center;
+  z-index: 2;
+}
+
+@keyframes sunPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 70px rgba(240, 198, 159, 0.35),
+      0 0 140px rgba(230, 163, 184, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 100px rgba(240, 198, 159, 0.5),
+      0 0 180px rgba(230, 163, 184, 0.28);
+  }
+}
+
+@keyframes gridScroll {
+  from {
+    background-position:
+      0 0,
+      0 0;
+  }
+  to {
+    background-position:
+      0 40px,
+      0 0;
+  }
+}
+
+@keyframes scanShift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 4px;
+  }
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-620px);
+    opacity: 0;
+  }
+}
+
+@keyframes logoPop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes tagFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .splash-sun,
+  .splash-grid-lines,
+  .splash-scanlines,
+  .splash-particle,
+  .splash-wordmark,
+  .splash-tagline,
+  .splash-cta-group {
+    animation: none !important;
+  }
+
+  .splash-particle,
+  .splash-wordmark,
+  .splash-tagline,
+  .splash-cta-group {
+    transform: none !important;
+  }
+
   .bracket-live-dot,
   .bracket-round-panel,
   .bracket-round-item,
@@ -368,7 +670,10 @@ samp {
   .bracket-intro-card--card2,
   .bracket-intro-vs,
   .bracket-winner-card,
-  .bracket-confetti-piece {
+  .bracket-confetti-piece,
+  .bracket-pop-in,
+  .bracket-pop-in-fade,
+  .bracket-glow-pulse {
     animation: none !important;
     transform: none !important;
   }

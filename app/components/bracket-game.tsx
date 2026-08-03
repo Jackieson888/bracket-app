@@ -11,6 +11,7 @@ import { Box, Container, Stack, Typography } from "@mui/material";
 import Image from "next/image";
 
 import GameItemCard, { type Voter } from "./game-item-card";
+import { initialsFor } from "@/lib/avatar";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
 
@@ -34,17 +35,6 @@ function colorForParticipant(id: string) {
     hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
   }
   return VOTER_COLOR_POOL[hash % VOTER_COLOR_POOL.length];
-}
-
-function initialsFor(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return "GU";
-  }
-  if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
-  }
-  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 function votersForChoice(
@@ -96,6 +86,7 @@ type BracketGameProps = {
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
   onPlayAgain?: () => void;
+  isHost?: boolean;
   playerCount?: number;
 };
 
@@ -108,6 +99,7 @@ export default function BracketGame({
   roomState,
   onVote,
   onPlayAgain,
+  isHost,
   playerCount,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
@@ -629,25 +621,54 @@ export default function BracketGame({
                 {currentRoundItems[0]?.title}
               </Typography>
             </Box>
-            <Box
-              onClick={() =>
-                onPlayAgain ? onPlayAgain() : (window.location.href = "/play")
-              }
+            <Stack
+              direction="row"
+              spacing="10px"
               sx={{
-                cursor: "pointer",
-                padding: "13px 28px",
-                borderRadius: "14px",
-                backgroundColor: "#b8a8dd",
-                fontFamily: "var(--font-heading)",
-                fontSize: "14px",
-                letterSpacing: "2px",
-                color: "#241c34",
                 position: "relative",
                 zIndex: 2,
+                flexWrap: "wrap",
+                justifyContent: "center",
               }}
             >
-              PLAY AGAIN
-            </Box>
+              {isHost ? (
+                <Box
+                  role="button"
+                  onClick={() => onPlayAgain?.()}
+                  className="bracket-glow-pulse"
+                  sx={{
+                    cursor: "pointer",
+                    padding: "13px 28px",
+                    borderRadius: "14px",
+                    backgroundColor: "var(--peach)",
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "14px",
+                    letterSpacing: "2px",
+                    color: "#241c34",
+                  }}
+                >
+                  PLAY AGAIN
+                </Box>
+              ) : null}
+              <Box
+                component="a"
+                href="/play"
+                sx={{
+                  display: "inline-block",
+                  textDecoration: "none",
+                  cursor: "pointer",
+                  padding: "13px 28px",
+                  borderRadius: "14px",
+                  backgroundColor: "#b8a8dd",
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "14px",
+                  letterSpacing: "2px",
+                  color: "#241c34",
+                }}
+              >
+                DIFFERENT BRACKET
+              </Box>
+            </Stack>
           </Box>
         ) : null}
       </Box>

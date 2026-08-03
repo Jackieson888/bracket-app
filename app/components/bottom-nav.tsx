@@ -1,18 +1,26 @@
 "use client";
 
-import { BottomNavigation, BottomNavigationAction, Paper } from "@mui/material";
-import PlayArrowRounded from "@mui/icons-material/PlayArrowRounded";
-import AddRounded from "@mui/icons-material/AddRounded";
+import { Box, BottomNavigation, BottomNavigationAction, Paper } from "@mui/material";
+import {
+  PlayArrowRounded,
+  AddRounded,
+  SupervisorAccountRounded,
+} from "@mui/icons-material";
 import { usePathname, useRouter } from "next/navigation";
 
 const TABS = [
-  { label: "Play", value: "/play", icon: <PlayArrowRounded /> },
-  { label: "Create", value: "/create", icon: <AddRounded /> },
+  { label: "Play", value: "/play", Icon: PlayArrowRounded },
+  { label: "Create", value: "/create", Icon: AddRounded },
+  { label: "Profile", value: "/profile", Icon: SupervisorAccountRounded },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+
+  if (pathname === "/") {
+    return null;
+  }
 
   const activeValue =
     TABS.find((tab) => pathname?.startsWith(tab.value))?.value ?? false;
@@ -26,9 +34,9 @@ export default function BottomNav() {
         left: 0,
         right: 0,
         zIndex: 1100,
-        borderTop: "1px solid",
-        borderColor: "divider",
-        backgroundColor: "background.paper",
+        borderTop: "1px solid rgba(255,255,255,0.06)",
+        backgroundColor: "rgba(36,28,52,0.92)",
+        backdropFilter: "blur(6px)",
         borderRadius: 0,
       }}
     >
@@ -43,22 +51,51 @@ export default function BottomNav() {
           mx: "auto",
           backgroundColor: "transparent",
           "& .MuiBottomNavigationAction-root": {
-            color: "text.secondary",
+            color: "var(--sub)",
+            opacity: 0.55,
             minWidth: 0,
           },
+          "& .MuiBottomNavigationAction-label": {
+            fontFamily: "var(--font-heading)",
+            fontSize: "11px",
+            letterSpacing: "1.5px",
+          },
           "& .Mui-selected": {
-            color: "primary.main",
+            color: "var(--pink)",
+            opacity: 1,
           },
         }}
       >
-        {TABS.map((tab) => (
-          <BottomNavigationAction
-            key={tab.value}
-            label={tab.label}
-            value={tab.value}
-            icon={tab.icon}
-          />
-        ))}
+        {TABS.map(({ label, value, Icon }) => {
+          const isActive = value === activeValue;
+          return (
+            <BottomNavigationAction
+              key={value}
+              label={label}
+              value={value}
+              icon={
+                <Box
+                  sx={{
+                    width: "34px",
+                    height: "34px",
+                    borderRadius: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isActive
+                      ? "rgba(230,163,184,0.18)"
+                      : "transparent",
+                    boxShadow: isActive
+                      ? "0 0 14px rgba(230,163,184,0.25)"
+                      : "none",
+                  }}
+                >
+                  <Icon fontSize="small" />
+                </Box>
+              }
+            />
+          );
+        })}
       </BottomNavigation>
     </Paper>
   );

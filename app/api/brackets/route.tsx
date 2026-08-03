@@ -2,7 +2,7 @@ import clientPromise from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
 import { toPublicUser } from "@/lib/user";
 
-const MAX_BRACKETS_RETURNED = 50;
+const MAX_BRACKETS_RETURNED = 5;
 
 export async function POST(req: Request) {
   try {

@@ -69,6 +69,45 @@ function connectClient({ slug, participantId, displayName }) {
   });
 }
 
+// Connects like a genuinely new browser tab would (participantId baked into
+// the query string from the start, no explicit "join" message) and just
+// observes what the server does — used to validate the late-join lockout,
+// where the server should reject before ever registering this client.
+function connectStranger({ slug, participantId, displayName }) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(
+      `${wsBase}?slug=${encodeURIComponent(slug)}&participantId=${encodeURIComponent(participantId)}&displayName=${encodeURIComponent(displayName)}`,
+    );
+    const messages = [];
+    let settled = false;
+
+    const finish = (closed) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ messages, closed });
+    };
+
+    const timeout = setTimeout(() => {
+      try {
+        ws.close();
+      } catch {}
+      finish(false);
+    }, 3000);
+
+    ws.on("message", (raw) => {
+      try {
+        messages.push(JSON.parse(raw.toString()));
+      } catch (err) {
+        messages.push({ parseError: String(err) });
+      }
+    });
+
+    ws.on("close", () => finish(true));
+    ws.on("error", () => {});
+  });
+}
+
 function latestMessage(client, type) {
   for (let i = client.messages.length - 1; i >= 0; i -= 1) {
     if (client.messages[i]?.payload?.type === type) return client.messages[i];
@@ -121,14 +160,36 @@ async function main() {
   ];
   const hostId = `qa-host-${Date.now()}`;
   const friendId = `qa-friend-${Date.now()}`;
+  const bracketTitle = `QA Bracket ${Date.now()}`;
+
+  // 1. Host creates a bracket (mirrors app/create/page.tsx handleSaveBracket).
+  const createBracketRes = await api("/api/brackets", {
+    method: "POST",
+    body: JSON.stringify({ title: bracketTitle, items: bracketItems }),
+  });
+  assert(
+    createBracketRes.ok && createBracketRes.body?.success,
+    "create-bracket",
+    JSON.stringify(createBracketRes),
+  );
+
+  // 2. Host selects the bracket to play it (mirrors app/play/page.tsx list + handlePlayItem).
+  const listBracketsRes = await api(
+    `/api/brackets?search=${encodeURIComponent(bracketTitle)}`,
+  );
+  const foundBracket = (listBracketsRes.body?.brackets || []).find(
+    (b) => b.title === bracketTitle,
+  );
+  assert(
+    Boolean(foundBracket),
+    "select-bracket-from-list",
+    JSON.stringify(listBracketsRes.body),
+  );
+  out.metrics.bracketTitle = bracketTitle;
 
   const createRes = await api("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({
-      title: "QA reconnect bracket",
-      items: bracketItems,
-      user: { name: "QA Host" },
-    }),
+    body: JSON.stringify(foundBracket ?? { title: bracketTitle, items: bracketItems }),
   });
   if (!createRes.ok || !createRes.body?.slug)
     throw new Error(`Create session failed: ${JSON.stringify(createRes)}`);
@@ -144,6 +205,7 @@ async function main() {
     `status=${missing.status}`,
   );
 
+  // 3. Friends join using the room code (slug).
   const joinHostApi = await api(`/api/sessions/${slug}`, {
     method: "POST",
     body: JSON.stringify({ participantId: hostId, displayName: "Host QA" }),
@@ -215,6 +277,7 @@ async function main() {
     `hostRoster=${Array.from(hostRosterIds).join(",")}; friendRoster=${Array.from(friendRosterIds).join(",")}`,
   );
 
+  // 4. Host starts the game after friends have joined.
   host.ws.send(
     JSON.stringify({
       type: "start-game",
@@ -231,6 +294,54 @@ async function main() {
   );
   assert(true, "start-game-state", "both clients received game-started");
 
+  // 5. Late-join lockout: once started, only already-joined participants may enter.
+  const strangerParticipantId = `qa-stranger-${Date.now()}`;
+  const strangerRest = await api(`/api/sessions/${slug}`, {
+    method: "POST",
+    body: JSON.stringify({
+      participantId: strangerParticipantId,
+      displayName: "Stranger QA",
+    }),
+  });
+  assert(
+    strangerRest.status === 409,
+    "late-join-rest-rejected",
+    `status=${strangerRest.status} body=${JSON.stringify(strangerRest.body)}`,
+  );
+
+  const postLockSnapshot = await api(`/api/sessions/${slug}`);
+  const postLockIds = postLockSnapshot.body?.participantIds || [];
+  assert(
+    !postLockIds.includes(strangerParticipantId),
+    "late-join-rest-not-persisted",
+    `participantIds=${JSON.stringify(postLockIds)}`,
+  );
+
+  const knownRejoinRest = await api(`/api/sessions/${slug}`, {
+    method: "POST",
+    body: JSON.stringify({ participantId: hostId, displayName: "Host QA" }),
+  });
+  assert(
+    knownRejoinRest.ok,
+    "known-participant-can-rejoin-rest-while-started",
+    `status=${knownRejoinRest.status}`,
+  );
+
+  const strangerWs = await connectStranger({
+    slug,
+    participantId: `qa-stranger-ws-${Date.now()}`,
+    displayName: "Stranger WS QA",
+  });
+  const strangerLocked = strangerWs.messages.some(
+    (m) => m?.type === "room-locked",
+  );
+  assert(
+    strangerLocked && strangerWs.closed,
+    "late-join-ws-locked",
+    `messages=${JSON.stringify(strangerWs.messages)} closed=${strangerWs.closed}`,
+  );
+
+  // 6. Real-time voting and round progression.
   host.ws.send(
     JSON.stringify({
       type: "vote",
@@ -340,6 +451,7 @@ async function main() {
     state: latestMessage(host, "vote-update")?.payload,
   });
 
+  // 7. Disconnect mid-game and reconnect back into the same instance.
   host.ws.close();
   friend.ws.close();
   await sleep(1000);
@@ -496,6 +608,86 @@ async function main() {
     "join-roster-persistence-final",
     `participantIds=${JSON.stringify(participantIds)}`,
   );
+
+  // 8. After a winner is declared: non-hosts cannot restart, and the host's
+  // "Play Again" resets the SAME bracket for everyone still connected.
+  const rematchHost = await connectClient({
+    slug,
+    participantId: hostId,
+    displayName: "Host QA",
+  });
+  const rematchFriend = await connectClient({
+    slug,
+    participantId: friendId,
+    displayName: "Friend QA",
+  });
+
+  await waitFor(
+    () => {
+      const h = latestRoomState(rematchHost);
+      const f = latestRoomState(rematchFriend);
+      return h?.roomStatus === "completed" && f?.roomStatus === "completed";
+    },
+    8000,
+    "rematch clients see completed room before restart",
+  );
+
+  rematchFriend.ws.send(
+    JSON.stringify({ type: "start-game", slug, currentRoundItems: bracketItems }),
+  );
+  await waitFor(
+    () => Boolean(latestMessage(rematchFriend, "start-denied")),
+    4000,
+    "non-host rematch denied",
+  );
+  assert(
+    Boolean(latestMessage(rematchFriend, "start-denied")),
+    "rematch-non-host-denied",
+    "friend did not receive start-denied",
+  );
+
+  const stillCompletedSnapshot = await api(`/api/sessions/${slug}`);
+  assert(
+    stillCompletedSnapshot.body?.roomStatus === "completed",
+    "rematch-denied-does-not-reset-room",
+    `roomStatus=${stillCompletedSnapshot.body?.roomStatus}`,
+  );
+
+  rematchHost.ws.send(
+    JSON.stringify({ type: "start-game", slug, currentRoundItems: bracketItems }),
+  );
+
+  await waitFor(
+    () => {
+      const h = latestMessage(rematchHost, "game-started")?.payload;
+      const f = latestMessage(rematchFriend, "game-started")?.payload;
+      return (
+        h?.roomStatus === "started" &&
+        h?.gameState?.round === 0 &&
+        f?.roomStatus === "started" &&
+        f?.gameState?.round === 0
+      );
+    },
+    6000,
+    "play-again rematch reaches both clients",
+  );
+
+  const rematchState = latestMessage(rematchHost, "game-started")?.payload;
+  const rematchIds = (rematchState?.gameState?.currentRoundItems || []).map(
+    (item) => item._id,
+  );
+  assert(
+    rematchState?.roomStatus === "started" &&
+      rematchState?.gameState?.round === 0 &&
+      rematchState?.gameState?.currentMatch === 0 &&
+      JSON.stringify(rematchIds) ===
+        JSON.stringify(bracketItems.map((item) => item._id)),
+    "play-again-resets-same-bracket",
+    `roomStatus=${rematchState?.roomStatus} round=${rematchState?.gameState?.round} items=${JSON.stringify(rematchIds)}`,
+  );
+
+  rematchHost.ws.close();
+  rematchFriend.ws.close();
 
   out.finishedAt = new Date().toISOString();
   out.passCount = Object.values(out.checks).filter((v) => v.pass).length;

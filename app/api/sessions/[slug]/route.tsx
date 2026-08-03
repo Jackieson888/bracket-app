@@ -98,7 +98,14 @@ export async function POST(
 
     const existingSession = await sessions.findOne(
       { slug },
-      { projection: { expiresAt: 1, createdAt: 1 } },
+      {
+        projection: {
+          expiresAt: 1,
+          createdAt: 1,
+          roomStatus: 1,
+          participantIds: 1,
+        },
+      },
     );
 
     if (!existingSession) {
@@ -108,6 +115,20 @@ export async function POST(
     if (isExpired(existingSession.expiresAt, existingSession.createdAt)) {
       await sessions.deleteOne({ slug });
       return Response.json({ error: "Session expired" }, { status: 404 });
+    }
+
+    const isKnownParticipant = Array.isArray(existingSession.participantIds)
+      ? existingSession.participantIds.includes(participantId)
+      : false;
+
+    if (existingSession.roomStatus === "started" && !isKnownParticipant) {
+      return Response.json(
+        {
+          error:
+            "This game has already started. You can no longer join.",
+        },
+        { status: 409 },
+      );
     }
 
     const updateResult = await sessions.updateOne(

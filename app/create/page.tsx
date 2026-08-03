@@ -1,20 +1,11 @@
 "use client";
 
-import {
-  Container,
-  Box,
-  Stack,
-  Button,
-  TextField,
-  Badge,
-  Grid,
-  Card,
-} from "@mui/material";
+import { Container, Box, Typography } from "@mui/material";
 import { useUser } from "../user-provider";
 import BracketItemCard from "../components/bracket-item-card";
 import NewBracketItemCard from "../components/new-bracket-item-card";
-import EditBracketItemModal from "../components/edit-bracket-item-modal";
-import { useState, useEffect, SetStateAction } from "react";
+import PillLabel from "../components/pill-label";
+import { useState, useEffect } from "react";
 
 import {
   DndContext,
@@ -39,6 +30,8 @@ type BracketItem = {
   [key: string]: unknown;
 };
 
+const MIN_ITEMS = 4;
+
 export default function CreateBracketPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -62,15 +55,14 @@ export default function CreateBracketPage() {
       ? bracketItems.findIndex((item) => item.id === activeId)
       : -1;
 
-  const handleEditItem = (index: SetStateAction<number | null>) => {
-    setEditingIndex(index);
+  const handleToggleEdit = (index: number) => {
+    setEditingIndex((current) => (current === index ? null : index));
   };
 
-  const handleUpdateItem = (updatedItem: BracketItem) => {
+  const handleTitleChange = (index: number, value: string) => {
     setBracketItems((prev) =>
-      prev.map((item, i) => (i === editingIndex ? updatedItem : item)),
+      prev.map((item, i) => (i === index ? { ...item, title: value } : item)),
     );
-    setEditingIndex(null);
   };
 
   // Save to localStorage
@@ -91,6 +83,7 @@ export default function CreateBracketPage() {
 
   const handleDeleteItem = (index: number) => {
     setBracketItems((prev) => prev.filter((_, i) => i !== index));
+    setEditingIndex((current) => (current === index ? null : current));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -105,7 +98,7 @@ export default function CreateBracketPage() {
 
   const handleSaveBracket = async () => {
     if (!user) return alert("You must be logged in to save.");
-    if (bracketItems.length < 4)
+    if (bracketItems.length < MIN_ITEMS)
       return alert("You need at least 4 items to save a bracket.");
 
     await fetch("/api/brackets", {
@@ -115,11 +108,14 @@ export default function CreateBracketPage() {
   };
 
   const handlePlayBracket = () => {
-    if (bracketItems.length < 4)
+    if (bracketItems.length < MIN_ITEMS)
       return alert("You need at least 4 items to play.");
 
     window.location.href = "/play";
   };
+
+  const itemsNeeded = Math.max(0, MIN_ITEMS - bracketItems.length);
+  const isReady = itemsNeeded === 0;
 
   return (
     <Container>
@@ -127,56 +123,44 @@ export default function CreateBracketPage() {
         sx={{
           display: "flex",
           flexDirection: "column",
-          gap: 2,
-          padding: "8px",
+          gap: "18px",
+          padding: "22px 18px",
         }}
       >
-        <Badge
-          badgeContent={"Bracket Name"}
-          anchorOrigin={{
-            vertical: "top",
-            horizontal: "left",
-          }}
-          color="primary"
-          sx={{
-            width: "100%",
-          }}
-          slotProps={{
-            badge: {
-              sx: {
-                marginLeft: "36px",
-              },
-            },
-          }}
-        >
-          <Card
+        <Box className="bracket-pop-in" sx={{ position: "relative", mt: 1 }}>
+          <PillLabel>BRACKET NAME</PillLabel>
+          <Box
             sx={{
-              display: "flex",
-              maxHeight: "100px",
-              height: "70px",
-              width: "100%",
+              backgroundColor: "var(--card-elevated)",
+              borderRadius: "18px",
+              border: "1px solid rgba(255,255,255,0.06)",
+              padding: "20px 16px 14px",
             }}
           >
             <Box
+              component="input"
+              value={title}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setTitle(e.target.value)
+              }
+              placeholder="Untitled Bracket"
               sx={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                width: "stretch",
-                paddingX: "16px",
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                borderBottom: "2px solid rgba(230,163,184,0.4)",
+                paddingBottom: "8px",
+                fontFamily: "var(--font-body)",
+                fontWeight: 600,
+                fontSize: "16px",
+                color: "text.primary",
+                textOverflow: "ellipsis",
               }}
-            >
-              <TextField
-                hiddenLabel
-                value={title}
-                required
-                onChange={(e) => setTitle(e.target.value)}
-                fullWidth
-                variant="standard"
-              />
-            </Box>
-          </Card>
-        </Badge>
+            />
+          </Box>
+        </Box>
+
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
@@ -191,36 +175,28 @@ export default function CreateBracketPage() {
             items={bracketItems.map((item) => item.id)}
             strategy={rectSortingStrategy}
           >
-            <Grid
-              container
-              sx={{ maxHeight: "65vh", overflowY: "scroll" }}
-              rowSpacing={{ xs: 1, sm: 2, md: 3 }}
-              columnSpacing={{ xs: 1, sm: 2, md: 3 }}
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "12px",
+                maxHeight: "65vh",
+                overflowY: "auto",
+              }}
             >
               {bracketItems.map((item, idx) => (
-                <Grid key={item.id}>
-                  <Badge
-                    badgeContent={idx + 1}
-                    anchorOrigin={{
-                      vertical: "top",
-                      horizontal: "left",
-                    }}
-                    color="primary"
-                    sx={{
-                      width: "100%",
-                    }}
-                  >
-                    <BracketItemCard
-                      id={item.id}
-                      index={idx}
-                      item={item}
-                      onDeleteItem={handleDeleteItem}
-                      onEditItem={handleEditItem}
-                    />
-                  </Badge>
-                </Grid>
+                <BracketItemCard
+                  key={item.id}
+                  id={item.id}
+                  index={idx}
+                  item={item}
+                  isEditing={editingIndex === idx}
+                  onDeleteItem={handleDeleteItem}
+                  onToggleEdit={handleToggleEdit}
+                  onTitleChange={handleTitleChange}
+                />
               ))}
-            </Grid>
+            </Box>
           </SortableContext>
           <DragOverlay>
             {activeId ? (
@@ -228,73 +204,66 @@ export default function CreateBracketPage() {
                 id={activeId}
                 index={activeItemIndex}
                 item={bracketItems.find((i) => i.id === activeId)!}
+                isEditing={false}
                 onDeleteItem={() => {}}
-                onEditItem={() => {}}
+                onToggleEdit={() => {}}
+                onTitleChange={() => {}}
                 isOverlay
               />
             ) : null}
           </DragOverlay>
         </DndContext>
-        <Badge
-          badgeContent={"New Item"}
-          anchorOrigin={{
-            vertical: "top",
-            horizontal: "left",
-          }}
-          color="primary"
-          sx={{
-            width: "100%",
-          }}
-          slotProps={{
-            badge: {
-              sx: {
-                marginLeft: "22px",
-              },
-            },
-          }}
-        >
+
+        <Box className="bracket-pop-in" sx={{ position: "relative", mt: 0.25 }}>
+          <PillLabel>NEW ITEM</PillLabel>
           <NewBracketItemCard onAddItem={handleAddItem} />
-        </Badge>
+        </Box>
 
-        <Stack direction="row" spacing={2} sx={{ justifyContent: "center" }}>
-          {user ? (
-            <Button
-              fullWidth
-              variant="contained"
-              disabled={bracketItems.length < 4}
-              onClick={handleSaveBracket}
-              color="info"
-            >
-              Save Bracket
-            </Button>
-          ) : (
-            <Button
-              fullWidth
-              variant="contained"
-              disabled={bracketItems.length < 4}
-              onClick={handlePlayBracket}
-              color="info"
-            >
-              Play Bracket
-            </Button>
-          )}
-        </Stack>
-
-        {editingIndex !== null && (
-          <EditBracketItemModal
-            open={editingIndex !== null}
-            item={bracketItems[editingIndex]}
-            onClose={() => setEditingIndex(null)}
-            onSave={(item) => {
-              if (item !== null && editingIndex !== null) {
-                handleUpdateItem({
-                  ...item,
-                  id: bracketItems[editingIndex].id,
-                  title: item.title ?? "",
-                });
-              }
+        {isReady ? (
+          <Box
+            role="button"
+            onClick={user ? handleSaveBracket : handlePlayBracket}
+            className="bracket-glow-pulse"
+            sx={{
+              cursor: "pointer",
+              textAlign: "center",
+              padding: "16px",
+              borderRadius: "16px",
+              backgroundColor: "var(--peach)",
             }}
-          />
+          >
+            <Typography
+              sx={{
+                fontFamily: "var(--font-display)",
+                fontSize: "17px",
+                letterSpacing: "1px",
+                color: "#241c34",
+              }}
+            >
+              {user ? "SAVE BRACKET" : "PLAY BRACKET"}
+            </Typography>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              textAlign: "center",
+              padding: "16px",
+              borderRadius: "16px",
+              backgroundColor: "transparent",
+              border: "1.5px dashed var(--sub)",
+            }}
+          >
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "14px",
+                letterSpacing: "2px",
+                color: "text.secondary",
+              }}
+            >
+              NEED {itemsNeeded} MORE ITEM{itemsNeeded === 1 ? "" : "S"}
+            </Typography>
+          </Box>
         )}
       </Box>
     </Container>
