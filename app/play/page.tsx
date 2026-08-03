@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import {
-  Container,
+  Alert,
   Box,
+  Button,
+  Container,
+  Divider,
   Stack,
   TextField,
-  Divider,
-  Button,
   Typography,
 } from "@mui/material";
 import { useUser } from "../user-provider";
@@ -23,10 +24,16 @@ interface Item {
 export default function Play() {
   const userContext = useUser();
   const { user } = userContext || { user: null };
-  const [loading, setLoading] = useState(true);
+  const [bracketsLoading, setBracketsLoading] = useState(true);
+  const [joinLoading, setJoinLoading] = useState(false);
   const [slug, setSlug] = useState("");
   const [newestBrackets, setNewestBrackets] = useState<Item[]>([]);
   const [joinError, setJoinError] = useState("");
+
+  void user;
+
+  const normalizeRoomCode = (value: string) =>
+    value.trim().replace(/\s+/g, "").toUpperCase();
 
   useEffect(() => {
     async function fetchBrackets() {
@@ -39,7 +46,7 @@ export default function Play() {
       } catch (err) {
         console.error("Error fetching brackets:", err);
       } finally {
-        setLoading(false);
+        setBracketsLoading(false);
       }
     }
 
@@ -65,7 +72,7 @@ export default function Play() {
   };
 
   const handleSubmit = async () => {
-    const trimmedSlug = slug.trim();
+    const trimmedSlug = normalizeRoomCode(slug);
 
     if (!trimmedSlug) {
       setJoinError("Please enter a room code.");
@@ -73,8 +80,9 @@ export default function Play() {
     }
 
     try {
-      setLoading(true);
+      setJoinLoading(true);
       setJoinError("");
+      setSlug(trimmedSlug);
 
       const response = await fetch(`/api/sessions/${trimmedSlug}`);
       if (!response.ok) {
@@ -92,72 +100,112 @@ export default function Play() {
       console.error("Error joining room:", err);
       setJoinError("Unable to enter that room.");
     } finally {
-      setLoading(false);
+      setJoinLoading(false);
     }
   };
 
   return (
-    <Container>
-      <Box
-        sx={{
-          my: 1,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Stack
-          spacing={{ xs: 1, sm: 2 }}
-          direction="column"
-          useFlexGap
-          sx={{ flexWrap: "wrap" }}
+    <Container maxWidth="md">
+      <Stack spacing={2.5} sx={{ py: { xs: 1.5, sm: 2 } }}>
+        <Box
+          sx={{
+            borderRadius: 3,
+            p: { xs: 1.75, sm: 2.25 },
+            background:
+              "linear-gradient(135deg, rgba(22,63,95,0.16) 0%, rgba(173,86,33,0.16) 100%)",
+            border: "1px solid rgba(255,255,255,0.18)",
+          }}
         >
-          {newestBrackets.map((item: Item, idx: number) => (
-            <BracketCard
-              key={item._id}
-              id={item._id}
-              index={idx}
-              item={item}
-              onPlayItem={handlePlayItem}
-            />
-          ))}
-        </Stack>
-      </Box>
-      <Box
-        component="form"
-        autoComplete="off"
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 3,
-        }}
-      >
-        <Stack spacing={3}>
+          <Typography variant="h4">Play Live Brackets</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Join an existing room code or launch a live match from a bracket.
+          </Typography>
+        </Box>
+
+        <Box
+          component="form"
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.75,
+            borderRadius: 3,
+            p: { xs: 1.75, sm: 2.25 },
+            border: "1px solid",
+            borderColor: "divider",
+            backgroundColor: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <Typography variant="h6">Join By Room Code</Typography>
           <TextField
             id="title-input"
             label="Room Code"
             value={slug}
-            onChange={(e) => setSlug(e.target.value)}
+            slotProps={{ htmlInput: { maxLength: 12 } }}
+            onChange={(e) => {
+              setSlug(normalizeRoomCode(e.target.value));
+              if (joinError) {
+                setJoinError("");
+              }
+            }}
+            helperText="Room codes are uppercase letters."
             fullWidth
           />
-          {joinError ? (
-            <Typography color="error">{joinError}</Typography>
-          ) : null}
-        </Stack>
-        <Stack spacing={3}>
-          <Divider sx={{ bgcolor: (theme) => theme.palette.secondary.main }} />
 
-          <Button
-            variant="contained"
-            size="large"
-            onClick={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? "Joining..." : "Enter Room"}
+          {joinError ? <Alert severity="error">{joinError}</Alert> : null}
+
+          <Button variant="contained" size="large" type="submit" disabled={joinLoading}>
+            {joinLoading ? "Checking Room..." : "Enter Room"}
           </Button>
+        </Box>
+
+        <Divider sx={{ bgcolor: (theme) => theme.palette.secondary.main }} />
+
+        <Stack spacing={1}>
+          <Typography variant="h6">Start A New Live Room</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Pick one of your recent brackets to generate a room instantly.
+          </Typography>
         </Stack>
-      </Box>
+
+        {bracketsLoading ? (
+          <Typography variant="body2" color="text.secondary">
+            Loading active brackets...
+          </Typography>
+        ) : null}
+
+        <Box
+          sx={{
+            my: 0.5,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Stack
+            spacing={{ xs: 1, sm: 2 }}
+            direction="column"
+            useFlexGap
+            sx={{ flexWrap: "wrap", width: "100%" }}
+          >
+            {newestBrackets.map((item: Item, idx: number) => (
+              <BracketCard
+                key={item._id}
+                id={item._id}
+                index={idx}
+                item={item}
+                onPlayItem={handlePlayItem}
+              />
+            ))}
+          </Stack>
+        </Box>
+      </Stack>
     </Container>
   );
 }
+

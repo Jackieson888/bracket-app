@@ -671,9 +671,12 @@ function attachWsRuntime(server, options = {}) {
 
           room.participantIds = new Set([
             ...Array.from(room.participantIds || []),
-            ...Array.from(room.clients.values()).map(
-              (entry) => entry.participantId || entry.id,
-            ),
+            ...Array.from(room.clients.values())
+              .map((entry) => entry.participantId)
+              .filter(
+                (participantId) =>
+                  typeof participantId === "string" && participantId.length > 0,
+              ),
           ]);
           room.roomStatus = "started";
           room.gameState = {
@@ -867,3 +870,5 @@ function attachWsRuntime(server, options = {}) {
 module.exports = {
   attachWsRuntime,
 };
+
+

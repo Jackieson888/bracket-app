@@ -46,36 +46,36 @@ samp {
 }
 
 .bracket-round-panel {
-  animation: bracketRoundPanelEnter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bracketRoundPanelEnter 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .bracket-round-header {
-  animation: bracketRoundHeaderEnter 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: bracketRoundHeaderEnter 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .bracket-round-banner {
   display: inline-flex;
   align-items: center;
-  animation: bracketRoundBannerEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: bracketRoundBannerEnter 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: center;
 }
 
 .bracket-round-banner--winner {
   animation:
-    bracketRoundBannerEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    bracketRoundBannerEnter 760ms cubic-bezier(0.16, 1, 0.3, 1) both,
     bracketWinnerEmphasis 1100ms cubic-bezier(0.18, 1, 0.32, 1) 160ms both;
 }
 
 .bracket-matchup-stack {
-  animation: bracketMatchupStackEnter 900ms cubic-bezier(0.2, 1, 0.3, 1) both;
+  animation: bracketMatchupStackEnter 760ms cubic-bezier(0.2, 1, 0.3, 1) both;
 }
 
 .bracket-round-vs {
-  animation: bracketRoundVsEnter 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: bracketRoundVsEnter 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .bracket-round-item {
-  animation: bracketItemEnter 960ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: bracketItemEnter 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: var(--bracket-item-delay, 0ms);
   transform-origin: center;
   will-change: transform, opacity, filter;
@@ -83,7 +83,7 @@ samp {
 
 .bracket-round-item--winner {
   animation:
-    bracketItemEnter 960ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    bracketItemEnter 820ms cubic-bezier(0.16, 1, 0.3, 1) both,
     bracketWinnerEmphasis 1100ms cubic-bezier(0.18, 1, 0.32, 1)
       calc(var(--bracket-item-delay, 0ms) + 180ms) both;
 }
@@ -96,8 +96,8 @@ samp {
   opacity: 1;
   visibility: visible;
   transition:
-    opacity 220ms ease,
-    visibility 220ms ease;
+    opacity 180ms ease,
+    visibility 180ms ease;
 }
 
 .bracket-round-panel--hidden {
@@ -117,8 +117,8 @@ samp {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(11, 19, 19, 0.88);
-  backdrop-filter: blur(10px);
+  background: rgba(11, 19, 19, 0.82);
+  backdrop-filter: blur(8px);
 }
 
 .bracket-intro-stage {
@@ -127,7 +127,7 @@ samp {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .bracket-intro-card {
@@ -136,9 +136,9 @@ samp {
   transform: scale(0.92);
   opacity: 0;
   transition:
-    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 260ms ease,
-    width 260ms ease;
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 220ms ease,
+    width 220ms ease;
 }
 
 .bracket-intro-card.is-active {
@@ -173,8 +173,8 @@ samp {
   opacity: 0;
   transform: scale(0.9) translateY(6px);
   transition:
-    opacity 240ms ease,
-    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 200ms ease,
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
   text-transform: uppercase;
   color: var(--foreground);
   text-shadow: 4px 4px 0 rgba(167, 62, 38, 0.45);
@@ -313,7 +313,7 @@ samp {
 }
 
 .bracket-intro-overlay {
-  animation: bracketIntroOverlayEnter 220ms ease both;
+  animation: bracketIntroOverlayEnter 180ms ease both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -338,3 +338,18 @@ samp {
     transition: none !important;
   }
 }
+
+@media (max-width: 640px) {
+  .bracket-intro-overlay {
+    padding: 14px;
+  }
+
+  .bracket-intro-stage {
+    gap: 14px;
+  }
+
+  .bracket-matchup-stack {
+    margin-top: 20px !important;
+  }
+}
+

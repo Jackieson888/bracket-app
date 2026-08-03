@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type CSSProperties,
 } from "react";
-import { Box, Container, Divider, Stack, Typography } from "@mui/material";
+import { Box, Chip, Container, Divider, Stack, Typography } from "@mui/material";
 
 import GameItemCard from "./game-item-card";
 
@@ -44,6 +44,7 @@ export default function BracketGame({
   bracket,
   roomState,
   onVote,
+  playerCount,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
@@ -106,6 +107,11 @@ export default function BracketGame({
     return null;
   }, [left?.title, leftIndex, right?.title, rightIndex, roomState?.winner]);
 
+  const totalMatchesThisRound = Math.max(
+    1,
+    Math.ceil(currentRoundItems.length / matchSize),
+  );
+
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
       return;
@@ -134,12 +140,12 @@ export default function BracketGame({
     setShowIntro(true);
     setBoardVisible(false);
 
-    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 900);
-    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 1600);
+    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 800);
+    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 1400);
     const boardTimer = window.setTimeout(() => {
       setShowIntro(false);
       setBoardVisible(true);
-    }, 2600);
+    }, 2200);
 
     return () => {
       window.clearTimeout(card1Timer);
@@ -162,7 +168,7 @@ export default function BracketGame({
     setRecentWinner(roomState.lastWinner.title);
     const timer = window.setTimeout(() => {
       setRecentWinner(null);
-    }, 1800);
+    }, 1600);
 
     return () => window.clearTimeout(timer);
   }, [roomState?.lastWinner?.title]);
@@ -188,12 +194,8 @@ export default function BracketGame({
     return (
       <Container>
         <Box sx={{ padding: 2 }}>
-          <Typography variant="h5">
-            {bracket?.title || "Bracket Game"}
-          </Typography>
-          <Typography sx={{ mt: 2 }}>
-            No bracket items are available.
-          </Typography>
+          <Typography variant="h5">{bracket?.title || "Bracket Game"}</Typography>
+          <Typography sx={{ mt: 2 }}>No bracket items are available.</Typography>
         </Box>
       </Container>
     );
@@ -205,16 +207,26 @@ export default function BracketGame({
         sx={{
           display: "flex",
           flexDirection: "column",
-          gap: 2,
-          padding: "8px",
+          gap: 2.25,
+          padding: "10px",
         }}
       >
         <Stack spacing={1}>
-          <Typography variant="h5">
-            {bracket?.title || "Bracket Game"}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {voteSummary}
+          <Typography variant="h5">{bracket?.title || "Bracket Game"}</Typography>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+            <Chip label={voteSummary} size="small" />
+            <Chip label={`Round ${round + 1}`} size="small" variant="outlined" />
+            <Chip
+              label={`Match ${Math.min(currentMatch + 1, totalMatchesThisRound)} of ${totalMatchesThisRound}`}
+              size="small"
+              variant="outlined"
+            />
+            {typeof playerCount === "number" ? (
+              <Chip label={`${playerCount} player${playerCount > 1 ? "s" : ""}`} size="small" variant="outlined" />
+            ) : null}
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            Tap a card title to cast your vote.
           </Typography>
           <Divider
             sx={{
@@ -226,10 +238,7 @@ export default function BracketGame({
         </Stack>
 
         {currentRoundItems.length === 1 ? (
-          <Box
-            className="bracket-round-panel"
-            sx={{ textAlign: "center", mt: 4 }}
-          >
+          <Box className="bracket-round-panel" sx={{ textAlign: "center", mt: 4 }}>
             <Box
               className="bracket-round-banner bracket-round-banner--winner"
               sx={{
@@ -307,7 +316,7 @@ export default function BracketGame({
             <Stack
               className="bracket-matchup-stack"
               spacing={2}
-              sx={{ justifyContent: "center", marginTop: "32px" }}
+              sx={{ justifyContent: "center", marginTop: "28px" }}
             >
               <Box
                 className={`bracket-round-item bracket-round-item--left${winnerIndex === leftIndex ? " bracket-round-item--winner" : ""}`}
@@ -438,3 +447,4 @@ function countVotesForChoice(
     return vote?.choice === choice ? count + 1 : count;
   }, 0);
 }
+

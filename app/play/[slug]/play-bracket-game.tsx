@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
-import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
 import { useUser } from "@/app/user-provider";
-import { Circle } from "@mui/icons-material";
-import { Timer } from "@mui/icons-material";
+import { CheckCircle, Circle, ContentCopy, Timer } from "@mui/icons-material";
 
 type Session = {
   bracket: unknown;
@@ -18,6 +28,7 @@ type Session = {
   >;
   [key: string]: unknown;
 };
+
 type RoomClient = {
   id: string;
   joinedAt: number;
@@ -54,7 +65,11 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [sessionError, setSessionError] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
   const [participantId, setParticipantId] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [startLoading, setStartLoading] = useState(false);
+  const [roomCopied, setRoomCopied] = useState(false);
   const reconnectAttemptRef = useRef(0);
+  const reconnectAllowedRef = useRef(true);
   const participantStorageKey = `tvt-participant-id:${slug}`;
 
   useEffect(() => {
@@ -82,7 +97,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         try {
           window.localStorage.setItem(participantStorageKey, value);
         } catch {
-          // Ignore storage failures; the in-memory state will still work for this tab.
+          // Ignore storage failures; in-memory state still works for this tab.
         }
       }
     };
@@ -103,7 +118,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     const resolvedName = name.trim() || "Guest";
     const resolvedParticipantId = resolveParticipantId();
 
-    await fetch(`/api/sessions/${slug}`, {
+    const response = await fetch(`/api/sessions/${slug}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -114,14 +129,20 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       }),
     });
 
+    if (!response.ok) {
+      throw new Error("Unable to persist player identity for this room");
+    }
+
     return resolvedParticipantId;
   };
 
   useEffect(() => {
+    const controller = new AbortController();
+
     setSessionLoading(true);
     setSessionError("");
 
-    fetch(`/api/sessions/${slug}`)
+    fetch(`/api/sessions/${slug}`, { signal: controller.signal })
       .then(async (res) => {
         if (res.status === 404) {
           throw new Error("Room not found");
@@ -142,28 +163,38 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           setRoomState(data.gameState);
         }
         if (data.participantLookup) {
-          const hydratedClients = Object.values(data.participantLookup).map(
-            (entry) => ({
+          const hydratedClients = Object.values(data.participantLookup)
+            .map((entry) => ({
               id: entry.participantId,
               displayName: entry.displayName || "Guest",
               joinedAt: entry.joinedAt
                 ? new Date(entry.joinedAt).getTime()
                 : Date.now(),
-            }),
-          );
+            }))
+            .sort((left, right) => left.joinedAt - right.joinedAt);
           if (hydratedClients.length > 0) {
             setClients(hydratedClients);
           }
         }
       })
       .catch((error) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
         console.error(error);
         setSession(null);
         setSessionError(error?.message || "Unable to load room");
       })
       .finally(() => {
-        setSessionLoading(false);
+        if (!controller.signal.aborted) {
+          setSessionLoading(false);
+        }
       });
+
+    return () => {
+      controller.abort();
+    };
   }, [slug]);
 
   useEffect(() => {
@@ -184,6 +215,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       return;
     }
 
+    reconnectAllowedRef.current = true;
     const resolvedParticipantId = resolveParticipantId();
     const resolvedName = (displayName || "Guest").trim() || "Guest";
 
@@ -209,13 +241,13 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     };
 
     const scheduleReconnect = () => {
-      if (isUnmounted) {
+      if (isUnmounted || !reconnectAllowedRef.current) {
         return;
       }
 
       if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
         setConnectionError(
-          "Real-time connection failed. Ensure websocket runtime is active (npm run dev), then refresh.",
+          "Real-time connection lost. Please refresh to reconnect to this room.",
         );
         return;
       }
@@ -224,7 +256,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       const attempt = reconnectAttemptRef.current;
       const retryDelayMs = Math.min(300 * attempt, 1000);
       setConnectionError(
-        `Connecting to room... retry ${attempt}/${MAX_RECONNECT_ATTEMPTS}`,
+        `Reconnecting to room... attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}`,
       );
       reconnectTimeoutHandle = window.setTimeout(() => {
         connectSocket();
@@ -232,7 +264,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     };
 
     const connectSocket = () => {
-      if (isUnmounted) {
+      if (isUnmounted || !reconnectAllowedRef.current) {
         return;
       }
 
@@ -255,7 +287,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               ? "ws:"
               : configuredUrl.protocol;
 
-        // Browsers block ws:// from secure origins, so upgrade protocol here.
         if (
           window.location.protocol === "https:" &&
           configuredProtocol === "ws:"
@@ -273,14 +304,13 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       wsUrl.searchParams.set("displayName", resolvedName);
 
       const nextSocket = new WebSocket(wsUrl.toString());
-      let didOpen = false;
       let didScheduleRetry = false;
 
       activeSocket = nextSocket;
       setSocket(nextSocket);
 
       openTimeoutHandle = window.setTimeout(() => {
-        if (didOpen || isUnmounted) {
+        if (isUnmounted) {
           return;
         }
 
@@ -292,12 +322,12 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           return;
         }
 
-        didOpen = true;
         reconnectAttemptRef.current = 0;
         if (openTimeoutHandle !== null) {
           window.clearTimeout(openTimeoutHandle);
           openTimeoutHandle = null;
         }
+
         setConnected(true);
         setConnectionError("");
         setConnectTimeMs(Date.now() - connectionStart);
@@ -313,6 +343,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
         void persistJoin(resolvedName).catch((error) => {
           console.error("Failed to persist room join:", error);
+          setConnectionError("Connected, but could not save your player name.");
         });
 
         setPendingVotes((current) => {
@@ -320,10 +351,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             return current;
           }
 
-          const queued = [...current];
-          const nextBatch = queued.splice(0);
+          const queuedVotes = [...current];
           setTimeout(() => {
-            nextBatch.forEach((vote) => {
+            queuedVotes.forEach((vote) => {
               nextSocket.send(
                 JSON.stringify({
                   type: "vote",
@@ -341,9 +371,19 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
       nextSocket.addEventListener("message", (event) => {
         try {
-          const payload = JSON.parse(event.data);
+          const payload =
+            typeof event.data === "string"
+              ? JSON.parse(event.data)
+              : JSON.parse(String(event.data));
+
           if (payload?.type === "room-state") {
-            setClients(payload.clients ?? []);
+            const nextClients = Array.isArray(payload.clients)
+              ? [...payload.clients].sort(
+                  (left: RoomClient, right: RoomClient) =>
+                    left.joinedAt - right.joinedAt,
+                )
+              : [];
+            setClients(nextClients);
             setRoomStatus(payload.roomStatus ?? "waiting");
             if (payload.gameState) {
               setRoomState(payload.gameState);
@@ -351,6 +391,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           }
 
           if (payload?.type === "game-started") {
+            setStartLoading(false);
             setRoomStatus(payload.roomStatus ?? "started");
             setRoomState(payload.gameState);
           }
@@ -364,11 +405,26 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           }
 
           if (payload?.type === "room-expired") {
+            reconnectAllowedRef.current = false;
+            setJoinLoading(false);
+            setStartLoading(false);
             setRoomStatus("expired");
             setRoomState(null);
             setConnectionError(
               payload?.message || "This room has expired. Start a new one.",
             );
+            nextSocket.close();
+          }
+
+          if (payload?.type === "room-locked") {
+            reconnectAllowedRef.current = false;
+            setJoinLoading(false);
+            setStartLoading(false);
+            setConnectionError(
+              payload?.message ||
+                "This game has already started and new players cannot join.",
+            );
+            nextSocket.close();
           }
         } catch (error) {
           console.error("Error reading room state", error);
@@ -386,15 +442,17 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         }
 
         setConnected(false);
+        setJoinLoading(false);
+        setStartLoading(false);
 
-        if (!didOpen && !didScheduleRetry) {
+        if (reconnectAllowedRef.current && !didScheduleRetry) {
           didScheduleRetry = true;
           scheduleReconnect();
         }
       });
 
       nextSocket.addEventListener("error", () => {
-        if (isUnmounted || didScheduleRetry) {
+        if (isUnmounted || didScheduleRetry || !reconnectAllowedRef.current) {
           return;
         }
 
@@ -408,6 +466,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
     return () => {
       isUnmounted = true;
+      reconnectAllowedRef.current = false;
       clearHandles();
       activeSocket?.close();
       setSocket(null);
@@ -416,44 +475,73 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   const handleStartGame = () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setConnectionError("Waiting for real-time connection before starting.");
       return;
     }
 
+    const items =
+      (
+        session?.bracket as {
+          items?: Array<{ _id: string; title: string }>;
+        }
+      )?.items ?? [];
+
+    if (items.length === 0) {
+      setConnectionError("This bracket has no items and cannot be started.");
+      return;
+    }
+
+    setStartLoading(true);
+    setConnectionError("");
     socket.send(
       JSON.stringify({
         type: "start-game",
         slug,
-        currentRoundItems:
-          (
-            session?.bracket as {
-              items?: Array<{ _id: string; title: string }>;
-            }
-          )?.items ?? [],
+        currentRoundItems: items,
       }),
     );
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
+      setConnectionError("Waiting for real-time connection before joining.");
       return;
     }
 
     const resolvedName = displayName.trim() || "Guest";
     const resolvedParticipantId = resolveParticipantId();
     setDisplayName(resolvedName);
+    setJoinLoading(true);
+    setConnectionError("");
 
-    void persistJoin(resolvedName).catch((error) => {
+    try {
+      await persistJoin(resolvedName);
+      socket.send(
+        JSON.stringify({
+          type: "join",
+          slug,
+          displayName: resolvedName,
+          participantId: resolvedParticipantId,
+        }),
+      );
+    } catch (error) {
       console.error("Failed to persist room join:", error);
-    });
+      setConnectionError("Could not update your player name right now.");
+    } finally {
+      setJoinLoading(false);
+    }
+  };
 
-    socket.send(
-      JSON.stringify({
-        type: "join",
-        slug,
-        displayName: resolvedName,
-        participantId: resolvedParticipantId,
-      }),
-    );
+  const handleCopyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(slug);
+      setRoomCopied(true);
+      window.setTimeout(() => {
+        setRoomCopied(false);
+      }, 1400);
+    } catch {
+      setConnectionError("Could not copy room code. You can still share it manually.");
+    }
   };
 
   const handleVote = (payload: {
@@ -466,6 +554,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
 
     if (socket.readyState !== WebSocket.OPEN) {
+      setConnectionError("Connection interrupted. Vote queued for resend.");
       setPendingVotes((current) => [...current, payload]);
       return;
     }
@@ -482,14 +571,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   const joinedLabel = useMemo(() => {
     if (clients.length === 0) {
-      return "Waiting for another player...";
+      return "Waiting for another player to join";
     }
 
     if (clients.length === 1) {
-      return "1 player in this room";
+      return "1 player connected";
     }
 
-    return `${clients.length} players in this room`;
+    return `${clients.length} players connected`;
   }, [clients.length]);
 
   const hasGameStarted =
@@ -498,15 +587,29 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     Boolean(roomState?.currentRoundItems?.length);
 
   const roomExpired = roomStatus === "expired";
+  const canUseSocket = Boolean(socket && socket.readyState === WebSocket.OPEN);
 
   if (sessionLoading) {
-    return <div>Loading session...</div>;
+    return (
+      <Box
+        sx={{
+          p: 3,
+          display: "flex",
+          alignItems: "center",
+          gap: { xs: 1.75, sm: 2.25 },
+          justifyContent: "center",
+        }}
+      >
+        <CircularProgress size={20} />
+        <Typography>Loading session...</Typography>
+      </Box>
+    );
   }
 
   if (sessionError) {
     return (
-      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-        <Typography color="error">{sessionError}</Typography>
+      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Alert severity="error">{sessionError}</Alert>
         <Button href="/play" variant="contained">
           Back to Play
         </Button>
@@ -516,8 +619,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   if (!session || !session.bracket) {
     return (
-      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-        <Typography color="error">This room is unavailable.</Typography>
+      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Alert severity="error">This room is unavailable.</Alert>
         <Button href="/play" variant="contained">
           Back to Play
         </Button>
@@ -527,10 +630,10 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   if (roomExpired) {
     return (
-      <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
-        <Typography color="error">
+      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Alert severity="error">
           This bracket session expired after 30 minutes.
-        </Typography>
+        </Alert>
         <Button href="/play" variant="contained">
           Back to Play
         </Button>
@@ -539,18 +642,77 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2, p: 2 }}>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2.25, p: { xs: 1.75, sm: 2 } }}>
+      <Box
+        sx={{
+          borderRadius: 3,
+          px: { xs: 2, sm: 3 },
+          py: { xs: 2, sm: 2.5 },
+          background:
+            "linear-gradient(135deg, rgba(28,56,80,0.18) 0%, rgba(170,92,44,0.18) 100%)",
+          border: "1px solid rgba(255,255,255,0.18)",
+        }}
+      >
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ justifyContent: "space-between", alignItems: { sm: "center" } }}
+        >
+          <Box>
+            <Typography variant="h5">Game Room</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Share this code with friends and start when everyone is ready.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <Chip label={slug} color="secondary" />
+            <Tooltip title={roomCopied ? "Copied" : "Copy room code"}>
+              <IconButton
+                aria-label="Copy room code"
+                color={roomCopied ? "success" : "default"}
+                onClick={handleCopyRoomCode}
+                size="small"
+              >
+                {roomCopied ? <CheckCircle fontSize="small" /> : <ContentCopy fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Box>
+
       {!hasGameStarted ? (
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: { xs: 1.75, sm: 2.25 },
+            borderRadius: 3,
+            p: { xs: 1.75, sm: 2.25 },
+            border: "1px solid",
+            borderColor: "divider",
+            backgroundColor: "rgba(255,255,255,0.03)",
+          }}
+        >
           <Typography variant="subtitle1">
-            Waiting room: press Start Game when you are ready. You can also
-            start and play solo.
+            Waiting room is live. Set your name, confirm the roster, then start.
           </Typography>
+
+          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+            <Chip label={joinedLabel} color="primary" variant="outlined" />
+            {pendingVotes.length > 0 ? (
+              <Chip
+                label={`${pendingVotes.length} queued vote${pendingVotes.length > 1 ? "s" : ""}`}
+                color="warning"
+                variant="outlined"
+              />
+            ) : null}
+          </Stack>
+
           <Box
             sx={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 1,
+              gap: 1.25,
               alignItems: "center",
             }}
           >
@@ -560,21 +722,33 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Guest"
+              helperText="This is what other players will see."
+              sx={{ minWidth: { xs: "100%", sm: 280 } }}
             />
-            <Button variant="contained" onClick={handleJoinRoom}>
-              Set Name / Rejoin
+            <Button
+              variant="contained"
+              onClick={handleJoinRoom}
+              disabled={!canUseSocket || joinLoading || startLoading}
+            >
+              {joinLoading ? "Saving Name..." : "Update Name"}
             </Button>
-            <Button variant="contained" onClick={handleStartGame}>
-              Start Game
+            <Button
+              variant="contained"
+              onClick={handleStartGame}
+              disabled={!canUseSocket || startLoading || joinLoading}
+            >
+              {startLoading ? "Starting..." : "Start Game"}
             </Button>
           </Box>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mt: 1 }}>
+
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.25, mt: 0.75 }}>
             {clients.map((client) => (
               <Chip key={client.id} label={client.displayName || "Guest"} />
             ))}
           </Box>
         </Box>
       ) : null}
+
       {hasGameStarted ? (
         <BracketGame
           bracket={
@@ -587,16 +761,23 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           playerCount={Math.max(1, clients.length)}
         />
       ) : null}
+
       <Stack
         direction="row"
         spacing={1}
-        sx={{ justifyContent: "space-between", width: "stretch" }}
+        sx={{
+          justifyContent: "space-between",
+          width: "stretch",
+          flexWrap: "wrap",
+          rowGap: 0.75,
+        }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          <Typography component="span">Room &nbsp;</Typography>
-          <Chip label={<code>{slug}</code>} color="secondary" />
-        </Box>
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Chip
+            label={connected ? "Connected" : "Reconnecting"}
+            color={connected ? "success" : "default"}
+            variant="outlined"
+          />
           {connectTimeMs !== null ? (
             <Chip
               icon={
@@ -611,13 +792,18 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               variant="outlined"
             />
           ) : null}
-          {connectionError ? (
-            <Typography color="error" variant="body2">
-              {connectionError}
-            </Typography>
-          ) : null}
         </Stack>
+        <Typography variant="body2" color="text.secondary">
+          Status updates synchronize in real time.
+        </Typography>
       </Stack>
+
+      {connectionError ? (
+        <Alert severity="warning" sx={{ mt: 0.75 }}>
+          {connectionError}
+        </Alert>
+      ) : null}
     </Box>
   );
 }
+
