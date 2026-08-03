@@ -1,11 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300..700&family=Roboto+Mono:wght@100..700&family=Ultra&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&family=Bebas+Neue&family=Roboto+Mono:wght@100..700&display=swap");
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --font-heading: "Ultra", Georgia, serif;
-  --font-body: "Roboto Condensed", "Arial Narrow", Arial, sans-serif;
+  --background: #0f1b22;
+  --foreground: #f3efe6;
+  --font-heading: "Bebas Neue", sans-serif;
+  --font-body: "Poppins", sans-serif;
+  --font-pill: "Baloo 2", sans-serif;
   --font-mono-ui:
     "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
@@ -16,13 +17,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-body);
   --font-mono: var(--font-mono-ui);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
