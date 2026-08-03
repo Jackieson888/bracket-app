@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
 import { useUser } from "@/app/user-provider";
-import { CheckCircle, Circle, ContentCopy, Timer } from "@mui/icons-material";
+import { CheckCircle, ContentCopy } from "@mui/icons-material";
 
 type Session = {
   bracket: unknown;
@@ -689,6 +689,24 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           <Typography variant="subtitle1">
             Waiting room is live. Set your name, confirm the roster, then start.
           </Typography>
+
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <Chip label={slug} color="secondary" />
+            <Tooltip title={roomCopied ? "Copied" : "Copy room code"}>
+              <IconButton
+                aria-label="Copy room code"
+                color={roomCopied ? "success" : "default"}
+                onClick={handleCopyRoomCode}
+                size="small"
+              >
+                {roomCopied ? (
+                  <CheckCircle fontSize="small" />
+                ) : (
+                  <ContentCopy fontSize="small" />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
           <Stack
             direction="row"

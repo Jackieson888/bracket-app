@@ -38,9 +38,13 @@ export async function GET(req: Request) {
     const query = req.url.includes("?") ? new URL(req.url).searchParams : null;
 
     const search = query?.get("search") ?? "";
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const results = await brackets
-      .find({ title: { $regex: search, $options: "i" } })
-      .limit(5)
+      .find(
+        escapedSearch
+          ? { title: { $regex: escapedSearch, $options: "i" } }
+          : {},
+      )
       .sort({ createdAt: -1 })
       .limit(MAX_BRACKETS_RETURNED)
       .toArray();
