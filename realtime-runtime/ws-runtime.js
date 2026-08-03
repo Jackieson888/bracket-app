@@ -55,6 +55,7 @@ async function loadPersistedRoom(slug) {
             roomSnapshotVersion: 1,
             expiresAt: 1,
             createdAt: 1,
+            hostParticipantId: 1,
           },
         },
       ),
@@ -85,6 +86,7 @@ function persistRoomSnapshot(slug, room, options = {}) {
     roomUpdatedAt: new Date(),
     expiresAt: room.expiresAt ?? null,
     createdAt: room.createdAt ?? null,
+    hostParticipantId: room.hostParticipantId ?? null,
   };
 
   const previous = roomPersistenceQueues.get(slug) ?? Promise.resolve();
@@ -262,6 +264,7 @@ async function getOrCreateRoom(slug) {
           ? persisted.participantIds
           : persistedLookupIds,
       ),
+      hostParticipantId: persisted?.hostParticipantId ?? null,
       roomStatus: persisted?.roomStatus || "waiting",
       gameStateVersion: Number(persisted?.gameStateVersion ?? 0),
       roomSnapshotVersion: Number(persisted?.roomSnapshotVersion ?? 0),
@@ -454,6 +457,18 @@ function normalizeBracketProgression(room) {
   }
 }
 
+function assignHostIfMissing(room, participantId) {
+  if (
+    room.hostParticipantId ||
+    typeof participantId !== "string" ||
+    participantId.length === 0
+  ) {
+    return;
+  }
+
+  room.hostParticipantId = participantId;
+}
+
 function getRoomClients(slug) {
   const room = rooms.get(slug);
   if (!room) {
@@ -606,6 +621,7 @@ function attachWsRuntime(server, options = {}) {
     };
 
     if (queryParticipantId) {
+      assignHostIfMissing(room, queryParticipantId);
       room.participantIds.add(queryParticipantId);
     }
 
@@ -644,6 +660,7 @@ function attachWsRuntime(server, options = {}) {
             return;
           }
 
+          assignHostIfMissing(room, incomingParticipantId);
           room.participantIds.add(incomingParticipantId);
           room.clients.set(ws, {
             ...room.clients.get(ws),
@@ -666,6 +683,20 @@ function attachWsRuntime(server, options = {}) {
         if (data?.type === "start-game") {
           if (isRoomExpired(room)) {
             expireRoom(slug);
+            return;
+          }
+
+          const requesterId = room.clients.get(ws)?.participantId;
+          if (
+            room.hostParticipantId &&
+            requesterId !== room.hostParticipantId
+          ) {
+            ws.send(
+              JSON.stringify({
+                type: "start-denied",
+                message: "Only the room host can start the game.",
+              }),
+            );
             return;
           }
 
@@ -706,9 +737,7 @@ function attachWsRuntime(server, options = {}) {
           }
 
           const playerId =
-            typeof data.playerId === "string" && data.playerId.length > 0
-              ? data.playerId
-              : room.clients.get(ws)?.participantId || room.clients.get(ws)?.id;
+            room.clients.get(ws)?.participantId || room.clients.get(ws)?.id;
           const round =
             typeof data.round === "number"
               ? data.round
@@ -830,17 +859,6 @@ function attachWsRuntime(server, options = {}) {
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
         }
 
-        if (data?.type === "sync-state") {
-          room.gameState = {
-            ...room.gameState,
-            ...data.gameState,
-          };
-          broadcastGameUpdate(slug, {
-            type: "game-sync",
-            gameState: room.gameState,
-          });
-          persistRoomSnapshot(slug, room, { gameStateChanged: true });
-        }
       } catch (error) {
         console.error("WebSocket message error:", error);
       }

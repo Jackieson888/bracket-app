@@ -2,13 +2,11 @@
 
 import { BottomNavigation, BottomNavigationAction, Paper } from "@mui/material";
 import PlayArrowRounded from "@mui/icons-material/PlayArrowRounded";
-import GridViewRounded from "@mui/icons-material/GridViewRounded";
 import AddRounded from "@mui/icons-material/AddRounded";
 import { usePathname, useRouter } from "next/navigation";
 
 const TABS = [
   { label: "Play", value: "/play", icon: <PlayArrowRounded /> },
-  { label: "My Brackets", value: "/my-brackets", icon: <GridViewRounded /> },
   { label: "Create", value: "/create", icon: <AddRounded /> },
 ];
 

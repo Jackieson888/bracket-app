@@ -1,5 +1,8 @@
 import clientPromise from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
+import { toPublicUser } from "@/lib/user";
+
+const MAX_BRACKETS_RETURNED = 50;
 
 export async function POST(req: Request) {
   try {
@@ -10,12 +13,10 @@ export async function POST(req: Request) {
     const db = client.db("test");
     const brackets = db.collection("brackets");
 
-    const user = session?.user ?? { guest: true };
-
     const doc = {
       title: body.title,
       items: body.items,
-      user: user,
+      user: toPublicUser(session?.user ?? null),
       createdAt: new Date(),
     };
 
@@ -40,9 +41,18 @@ export async function GET(req: Request) {
     const results = await brackets
       .find({ title: { $regex: search, $options: "i" } })
       .limit(5)
+      .sort({ createdAt: -1 })
+      .limit(MAX_BRACKETS_RETURNED)
       .toArray();
 
-    return Response.json({ success: true, brackets: results });
+    const sanitized = results.map((bracket) => ({
+      ...bracket,
+      user: toPublicUser(
+        bracket.user && !bracket.user.guest ? bracket.user : null,
+      ),
+    }));
+
+    return Response.json({ success: true, brackets: sanitized });
   } catch (err) {
     console.error("Error getting bracket:", err);
     return Response.json(

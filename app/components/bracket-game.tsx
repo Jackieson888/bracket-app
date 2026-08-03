@@ -395,6 +395,46 @@ export default function BracketGame({
                 />
               ) : null}
             </Box>
+          </Box>
+        ) : boardVisible ? (
+          <Box
+            key={matchKey}
+            className="bracket-round-panel bracket-round-panel--visible"
+            sx={{ textAlign: "center", mt: 1 }}
+          >
+            <Stack
+              direction="row"
+              className="bracket-round-header"
+              sx={{ alignItems: "center", justifyContent: "center" }}
+            >
+              <Typography
+                variant="h4"
+                className="bracket-round-label"
+                sx={{
+                  color: (theme) => theme.palette.background.paper,
+                  marginRight: "16px",
+                }}
+              >
+                Round
+              </Typography>
+              <Box
+                className="bracket-round-banner"
+                sx={{
+                  backgroundColor: (theme) => theme.palette.background.paper,
+                  borderRadius: "12px",
+                  padding: "0 12px 0 8px",
+                  textShadow: "4px 4px 0 #A73E26",
+                }}
+              >
+                <Typography
+                  variant="h2"
+                  color="info"
+                  sx={{ lineHeight: 1, marginBottom: "-8px" }}
+                >
+                  {round + 1}
+                </Typography>
+              </Box>
+            </Stack>
 
             {right ? (
               <Box

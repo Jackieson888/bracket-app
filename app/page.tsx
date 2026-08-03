@@ -1,11 +1,8 @@
 "use client";
 
 import { Container, Box, Stack, Button } from "@mui/material";
-import { useUser } from "./user-provider";
 
 export default function Home() {
-  const userContext = useUser();
-  const { user } = userContext || { user: null };
   return (
     <Container>
       <Box
@@ -26,13 +23,8 @@ export default function Home() {
           <Button fullWidth variant="contained" size="large" href="/create">
             Create New Bracket
           </Button>
-          {user ? (
-            <Button fullWidth variant="contained" size="large">
-              My Brackets
-            </Button>
-          ) : null}
-          <Button fullWidth variant="contained" size="large">
-            Find Bracket
+          <Button fullWidth variant="contained" size="large" href="/play">
+            Play A Bracket
           </Button>
         </Stack>
       </Box>

@@ -1,4 +1,5 @@
 import clientPromise from "@/lib/mongodb";
+import { toPublicUser } from "@/lib/user";
 
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
@@ -52,7 +53,20 @@ export async function GET(
       return Response.json({ error: "Session expired" }, { status: 404 });
     }
 
-    return Response.json(result);
+    const { hostUserId: _hostUserId, joinedUserIds: _joinedUserIds, ...safeResult } = result;
+    const bracket =
+      safeResult.bracket && typeof safeResult.bracket === "object"
+        ? {
+            ...safeResult.bracket,
+            user: toPublicUser(
+              safeResult.bracket.user && !safeResult.bracket.user.guest
+                ? safeResult.bracket.user
+                : null,
+            ),
+          }
+        : safeResult.bracket;
+
+    return Response.json({ ...safeResult, bracket });
   } catch (err) {
     console.error("Error getting session:", err);
     return Response.json({ error: "Failed to fetch session" }, { status: 500 });

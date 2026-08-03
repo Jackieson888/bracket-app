@@ -17,7 +17,7 @@ Produce a repeatable, evidence-backed validation that this app supports:
 
 ## When to Use
 - Before releases that touch session, gameplay, realtime, or scoring logic
-- After changes in [app/api/brackets/route.tsx](app/api/brackets/route.tsx), [app/api/sessions/route.tsx](app/api/sessions/route.tsx), [app/play/[slug]/play-bracket-game.tsx](app/play/[slug]/play-bracket-game.tsx), or [lib/ws.ts](lib/ws.ts)
+- After changes in [app/api/brackets/route.tsx](app/api/brackets/route.tsx), [app/api/sessions/route.tsx](app/api/sessions/route.tsx), [app/play/[slug]/play-bracket-game.tsx](app/play/[slug]/play-bracket-game.tsx), or [realtime-runtime/ws-runtime.js](realtime-runtime/ws-runtime.js)
 - When investigating reports of desync, incorrect bracket advancement, or wrong winners
 
 ## Required Inputs

@@ -426,6 +426,13 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             );
             nextSocket.close();
           }
+
+          if (payload?.type === "start-denied") {
+            setStartLoading(false);
+            setConnectionError(
+              payload?.message || "Only the room host can start the game.",
+            );
+          }
         } catch (error) {
           console.error("Error reading room state", error);
         }
