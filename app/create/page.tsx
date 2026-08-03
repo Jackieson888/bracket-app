@@ -264,9 +264,6 @@ export default function CreateBracketPage() {
               disabled={bracketItems.length < 4}
               onClick={handleSaveBracket}
               color="info"
-              sx={{
-                color: "#A73E26",
-              }}
             >
               Save Bracket
             </Button>
@@ -277,9 +274,6 @@ export default function CreateBracketPage() {
               disabled={bracketItems.length < 4}
               onClick={handlePlayBracket}
               color="info"
-              sx={{
-                color: "#A73E26",
-              }}
             >
               Play Bracket
             </Button>

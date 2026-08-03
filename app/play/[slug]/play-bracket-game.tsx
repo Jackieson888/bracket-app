@@ -540,7 +540,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         setRoomCopied(false);
       }, 1400);
     } catch {
-      setConnectionError("Could not copy room code. You can still share it manually.");
+      setConnectionError(
+        "Could not copy room code. You can still share it manually.",
+      );
     }
   };
 
@@ -608,7 +610,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   if (sessionError) {
     return (
-      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box
+        sx={{
+          p: { xs: 1.75, sm: 2.25 },
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
         <Alert severity="error">{sessionError}</Alert>
         <Button href="/play" variant="contained">
           Back to Play
@@ -619,7 +628,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   if (!session || !session.bracket) {
     return (
-      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box
+        sx={{
+          p: { xs: 1.75, sm: 2.25 },
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
         <Alert severity="error">This room is unavailable.</Alert>
         <Button href="/play" variant="contained">
           Back to Play
@@ -630,7 +646,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
   if (roomExpired) {
     return (
-      <Box sx={{ p: { xs: 1.75, sm: 2.25 }, display: "flex", flexDirection: "column", gap: 2 }}>
+      <Box
+        sx={{
+          p: { xs: 1.75, sm: 2.25 },
+          display: "flex",
+          flexDirection: "column",
+          gap: 2,
+        }}
+      >
         <Alert severity="error">
           This bracket session expired after 30 minutes.
         </Alert>
@@ -642,44 +665,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   }
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 2.25, p: { xs: 1.75, sm: 2 } }}>
-      <Box
-        sx={{
-          borderRadius: 3,
-          px: { xs: 2, sm: 3 },
-          py: { xs: 2, sm: 2.5 },
-          background:
-            "linear-gradient(135deg, rgba(28,56,80,0.18) 0%, rgba(170,92,44,0.18) 100%)",
-          border: "1px solid rgba(255,255,255,0.18)",
-        }}
-      >
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1.5}
-          sx={{ justifyContent: "space-between", alignItems: { sm: "center" } }}
-        >
-          <Box>
-            <Typography variant="h5">Game Room</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Share this code with friends and start when everyone is ready.
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <Chip label={slug} color="secondary" />
-            <Tooltip title={roomCopied ? "Copied" : "Copy room code"}>
-              <IconButton
-                aria-label="Copy room code"
-                color={roomCopied ? "success" : "default"}
-                onClick={handleCopyRoomCode}
-                size="small"
-              >
-                {roomCopied ? <CheckCircle fontSize="small" /> : <ContentCopy fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </Stack>
-      </Box>
-
+    <>
       {!hasGameStarted ? (
         <Box
           sx={{
@@ -697,7 +683,11 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             Waiting room is live. Set your name, confirm the roster, then start.
           </Typography>
 
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            sx={{ flexWrap: "wrap", rowGap: 1 }}
+          >
             <Chip label={joinedLabel} color="primary" variant="outlined" />
             {pendingVotes.length > 0 ? (
               <Chip
@@ -756,54 +746,22 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           }
           slug={slug}
           session={session}
+          connected={connected}
+          connectTimeMs={connectTimeMs ?? undefined}
+          participants={Object.fromEntries(
+            clients.map((client) => [client.id, client.displayName || "Guest"]),
+          )}
           roomState={roomState ?? undefined}
           onVote={handleVote}
           playerCount={Math.max(1, clients.length)}
         />
       ) : null}
 
-      <Stack
-        direction="row"
-        spacing={1}
-        sx={{
-          justifyContent: "space-between",
-          width: "stretch",
-          flexWrap: "wrap",
-          rowGap: 0.75,
-        }}
-      >
-        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-          <Chip
-            label={connected ? "Connected" : "Reconnecting"}
-            color={connected ? "success" : "default"}
-            variant="outlined"
-          />
-          {connectTimeMs !== null ? (
-            <Chip
-              icon={
-                connectTimeMs <= 100 ? (
-                  <Circle sx={{ width: "24px", paddingLeft: "4px" }} />
-                ) : (
-                  <Timer sx={{ width: "24px", paddingLeft: "4px" }} />
-                )
-              }
-              label={`${connectTimeMs}ms`}
-              color={connectTimeMs <= 100 ? "primary" : "secondary"}
-              variant="outlined"
-            />
-          ) : null}
-        </Stack>
-        <Typography variant="body2" color="text.secondary">
-          Status updates synchronize in real time.
-        </Typography>
-      </Stack>
-
       {connectionError ? (
         <Alert severity="warning" sx={{ mt: 0.75 }}>
           {connectionError}
         </Alert>
       ) : null}
-    </Box>
+    </>
   );
 }
-

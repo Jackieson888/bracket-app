@@ -18,37 +18,37 @@ const theme = createTheme({
   palette: {
     mode: "dark",
     common: {
-      black: "#0F1B22",
-      white: "#F3EFE6",
+      black: "#211A2E",
+      white: "#F2EEF7",
     },
     primary: {
-      main: "#F2734F",
-      dark: "#D9603F",
-      contrastText: "#1A0D08",
+      main: "#E6A3B8",
+      dark: "#D488A0",
+      contrastText: "#241C34",
     },
     secondary: {
-      main: "#8FC9C0",
-      contrastText: "#12262A",
+      main: "#8FD6C9",
+      contrastText: "#241C34",
     },
     info: {
-      main: "#D9A85C",
-      contrastText: "#1A0D08",
+      main: "#F0C69F",
+      contrastText: "#241C34",
     },
     warning: {
-      main: "#D9718A",
-      contrastText: "#1A0D08",
+      main: "#E6A3B8",
+      contrastText: "#241C34",
     },
     success: {
-      main: "#3A6E68",
-      contrastText: "#D9F2EC",
+      main: "#8FD6C9",
+      contrastText: "#241C34",
     },
     background: {
-      default: "#0F1B22",
-      paper: "#1C2C38",
+      default: "#211A2E",
+      paper: "#241C34",
     },
     text: {
-      primary: "#F3EFE6",
-      secondary: "#6D8A85",
+      primary: "#F2EEF7",
+      secondary: "#9184AD",
     },
     divider: "rgba(255,255,255,0.08)",
   },
@@ -56,7 +56,7 @@ const theme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          background: "#1C2C38",
+          background: "#241C34",
         },
       },
     },
@@ -128,7 +128,7 @@ const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          backgroundColor: "#24343E",
+          backgroundColor: "#2C2440",
           borderRadius: "12px",
         },
         notchedOutline: {
@@ -140,8 +140,8 @@ const theme = createTheme({
       styleOverrides: {
         badge: {
           inset: "8px auto auto 8px",
-          color: "#1A0D08",
-          background: "#F2734F",
+          color: "#241C34",
+          background: "#E6A3B8",
           fontWeight: "bold",
         },
       },

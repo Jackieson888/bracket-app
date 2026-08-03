@@ -143,7 +143,7 @@ export default function NewBracketItemCard({
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          backgroundColor: "#E79F7F",
+          backgroundColor: "#F0C69F",
         }}
       >
         <IconButton aria-label="upload" color="secondary" component="label">

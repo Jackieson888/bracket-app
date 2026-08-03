@@ -7,9 +7,10 @@ import {
   type ComponentProps,
   type CSSProperties,
 } from "react";
-import { Box, Chip, Container, Divider, Stack, Typography } from "@mui/material";
+import { Box, Container, Stack, Typography } from "@mui/material";
+import Image from "next/image";
 
-import GameItemCard from "./game-item-card";
+import GameItemCard, { type Voter } from "./game-item-card";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
 
@@ -18,6 +19,60 @@ type MatchVote = {
   at: number;
 };
 
+const VOTER_COLOR_POOL = [
+  "#e6a3b8",
+  "#8fd6c9",
+  "#b8a8dd",
+  "#f0c69f",
+  "#a8c9e0",
+  "#d9c98f",
+];
+
+function colorForParticipant(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return VOTER_COLOR_POOL[hash % VOTER_COLOR_POOL.length];
+}
+
+function initialsFor(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "GU";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+function votersForChoice(
+  matchVotes: Record<string, MatchVote> | null,
+  choice: number,
+  participants: Record<string, string>,
+): { voters: Voter[]; extraCount: number; count: number } {
+  if (!matchVotes) {
+    return { voters: [], extraCount: 0, count: 0 };
+  }
+
+  const entries = Object.entries(matchVotes)
+    .filter(([, vote]) => vote?.choice === choice)
+    .sort((a, b) => (a[1]?.at ?? 0) - (b[1]?.at ?? 0));
+
+  const visible = entries.slice(-5).map(([participantId]) => ({
+    id: participantId,
+    initials: initialsFor(participants[participantId] ?? "Guest"),
+    color: colorForParticipant(participantId),
+  }));
+
+  return {
+    voters: visible,
+    extraCount: Math.max(0, entries.length - 5),
+    count: entries.length,
+  };
+}
+
 type BracketGameProps = {
   bracket?: {
     items?: Item[];
@@ -25,6 +80,9 @@ type BracketGameProps = {
   };
   slug?: string;
   session?: unknown;
+  connected?: boolean;
+  connectTimeMs?: number;
+  participants?: Record<string, string>;
   roomState?: {
     round?: number;
     currentMatch?: number;
@@ -37,13 +95,19 @@ type BracketGameProps = {
     lastWinner?: Item | null;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
+  onPlayAgain?: () => void;
   playerCount?: number;
 };
 
 export default function BracketGame({
   bracket,
+  slug,
+  connected,
+  connectTimeMs,
+  participants = {},
   roomState,
   onVote,
+  onPlayAgain,
   playerCount,
 }: BracketGameProps) {
   const [round, setRound] = useState(0);
@@ -51,14 +115,12 @@ export default function BracketGame({
   const [currentRoundItems, setCurrentRoundItems] = useState<Item[]>(
     () => bracket?.items ?? [],
   );
-  const [voteSummary, setVoteSummary] = useState("Waiting for votes");
   const [showIntro, setShowIntro] = useState(false);
   const [introPhase, setIntroPhase] = useState<"card1" | "vs" | "card2">(
     "card1",
   );
   const [introKey, setIntroKey] = useState(0);
   const [boardVisible, setBoardVisible] = useState(true);
-  const [recentWinner, setRecentWinner] = useState<string | null>(null);
 
   useEffect(() => {
     if (roomState?.currentRoundItems?.length) {
@@ -86,31 +148,49 @@ export default function BracketGame({
   const currentMatchVotes = roomState?.votesByMatch?.[matchKey] ?? null;
   const leftIndex = startIndex;
   const rightIndex = startIndex + 1;
-  const leftVoteCount = countVotesForChoice(currentMatchVotes, leftIndex);
-  const rightVoteCount = right
-    ? countVotesForChoice(currentMatchVotes, rightIndex)
-    : null;
 
-  const winnerIndex = useMemo(() => {
-    if (!roomState?.winner) {
-      return null;
-    }
+  const leftVoters = useMemo(
+    () => votersForChoice(currentMatchVotes, leftIndex, participants),
+    [currentMatchVotes, leftIndex, participants],
+  );
+  const rightVoters = useMemo(
+    () => votersForChoice(currentMatchVotes, rightIndex, participants),
+    [currentMatchVotes, rightIndex, participants],
+  );
 
-    if (roomState.winner.title === left?.title) {
-      return leftIndex;
-    }
+  const requiredVotes = roomState?.requiredVoteCount ?? 0;
+  const leftPct =
+    requiredVotes > 0
+      ? Math.min(100, Math.round((leftVoters.count / requiredVotes) * 100))
+      : null;
+  const rightPct =
+    requiredVotes > 0
+      ? Math.min(100, Math.round((rightVoters.count / requiredVotes) * 100))
+      : null;
 
-    if (roomState.winner.title === right?.title) {
-      return rightIndex;
-    }
-
-    return null;
-  }, [left?.title, leftIndex, right?.title, rightIndex, roomState?.winner]);
+  const leading =
+    leftVoters.count === rightVoters.count
+      ? "tie"
+      : leftVoters.count > rightVoters.count
+        ? "left"
+        : "right";
 
   const totalMatchesThisRound = Math.max(
     1,
     Math.ceil(currentRoundItems.length / matchSize),
   );
+
+  const remainingVotes = Math.max(
+    0,
+    requiredVotes - (leftVoters.count + rightVoters.count),
+  );
+
+  const statusLine =
+    currentRoundItems.length <= 1
+      ? ""
+      : remainingVotes > 0
+        ? `TAP A CARD · ${remainingVotes} MORE VOTE${remainingVotes === 1 ? "" : "S"} TO ADVANCE`
+        : "ADVANCING…";
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
@@ -140,12 +220,12 @@ export default function BracketGame({
     setShowIntro(true);
     setBoardVisible(false);
 
-    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 800);
-    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 1400);
+    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 250);
+    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 500);
     const boardTimer = window.setTimeout(() => {
       setShowIntro(false);
       setBoardVisible(true);
-    }, 2200);
+    }, 850);
 
     return () => {
       window.clearTimeout(card1Timer);
@@ -160,269 +240,315 @@ export default function BracketGame({
     right?.title,
   ]);
 
-  useEffect(() => {
-    if (!roomState?.lastWinner?.title) {
-      return;
-    }
-
-    setRecentWinner(roomState.lastWinner.title);
-    const timer = window.setTimeout(() => {
-      setRecentWinner(null);
-    }, 1600);
-
-    return () => window.clearTimeout(timer);
-  }, [roomState?.lastWinner?.title]);
-
-  useEffect(() => {
-    if (currentRoundItems.length <= 1) {
-      setVoteSummary("Final winner selected");
-      return;
-    }
-
-    const totalVotes = roomState?.pendingVoteCount ?? 0;
-    const requiredVotes =
-      roomState?.requiredVoteCount ?? Math.max(2, totalVotes);
-
-    setVoteSummary(`${totalVotes}/${requiredVotes} votes cast`);
-  }, [
-    currentRoundItems.length,
-    roomState?.pendingVoteCount,
-    roomState?.requiredVoteCount,
-  ]);
+  const confetti = useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, i) => ({
+        left: (i * 137) % 100,
+        color: VOTER_COLOR_POOL[i % VOTER_COLOR_POOL.length],
+        duration: 1.6 + (i % 5) * 0.25,
+        delay: (i % 7) * 0.18,
+      })),
+    [],
+  );
 
   if (!currentRoundItems.length) {
     return (
       <Container>
         <Box sx={{ padding: 2 }}>
-          <Typography variant="h5">{bracket?.title || "Bracket Game"}</Typography>
-          <Typography sx={{ mt: 2 }}>No bracket items are available.</Typography>
+          <Typography variant="h5">
+            {bracket?.title || "Bracket Game"}
+          </Typography>
+          <Typography sx={{ mt: 2 }}>
+            No bracket items are available.
+          </Typography>
         </Box>
       </Container>
     );
   }
 
+  const isFinalWinner = currentRoundItems.length === 1;
+
   return (
     <Container>
       <Box
+        className="bracket-shell"
         sx={{
+          padding: "18px 18px 26px",
           display: "flex",
           flexDirection: "column",
-          gap: 2.25,
-          padding: "10px",
+          gap: 2,
         }}
       >
-        <Stack spacing={1}>
-          <Typography variant="h5">{bracket?.title || "Bracket Game"}</Typography>
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", rowGap: 1 }}>
-            <Chip label={voteSummary} size="small" />
-            <Chip label={`Round ${round + 1}`} size="small" variant="outlined" />
-            <Chip
-              label={`Match ${Math.min(currentMatch + 1, totalMatchesThisRound)} of ${totalMatchesThisRound}`}
-              size="small"
-              variant="outlined"
-            />
-            {typeof playerCount === "number" ? (
-              <Chip label={`${playerCount} player${playerCount > 1 ? "s" : ""}`} size="small" variant="outlined" />
-            ) : null}
-          </Stack>
-          <Typography variant="caption" color="text.secondary">
-            Tap a card title to cast your vote.
-          </Typography>
-          <Divider
+        <Stack
+          direction="row"
+          sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}
+        >
+          <Box
             sx={{
-              border: (theme) => `2px solid ${theme.palette.primary.main}`,
-              width: "stretch",
-              borderRadius: "12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "6px 12px",
+              borderRadius: "999px",
+              backgroundColor: "rgba(255,255,255,0.05)",
             }}
-          />
-        </Stack>
-
-        {currentRoundItems.length === 1 ? (
-          <Box className="bracket-round-panel" sx={{ textAlign: "center", mt: 4 }}>
-            <Box
-              className="bracket-round-banner bracket-round-banner--winner"
+          >
+            <Box className="bracket-live-dot" />
+            <Typography
               sx={{
-                backgroundColor: (theme) => theme.palette.background.paper,
-                borderRadius: "12px",
-                padding: "0 12px 0 8px",
-                textShadow: "4px 4px 0 #A73E26",
+                fontFamily: "var(--font-heading)",
+                fontSize: "12px",
+                letterSpacing: "1.5px",
+                color: "text.primary",
               }}
             >
-              <Typography
-                variant="h2"
-                color="info"
-                sx={{ lineHeight: 1, marginBottom: "-8px" }}
-              >
-                WINNER
-              </Typography>
-            </Box>
+              LIVE {slug ? ` · ${slug}` : ""}
+            </Typography>
+          </Box>
+          {typeof playerCount === "number" ? (
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "12px",
+                letterSpacing: "1.5px",
+                color: "text.secondary",
+                padding: "6px 12px",
+                borderRadius: "999px",
+                backgroundColor: "rgba(255,255,255,0.04)",
+              }}
+            >
+              {playerCount} PLAYER{playerCount > 1 ? "S" : ""}
+            </Typography>
+          ) : null}
+        </Stack>
+        {bracket?.title ? (
+          <Typography
+            sx={{
+              textAlign: "center",
+              fontFamily: "var(--font-heading)",
+              fontSize: "13px",
+              letterSpacing: "1px",
+              color: "text.secondary",
+            }}
+          >
+            {bracket.title}
+          </Typography>
+        ) : null}
+        {!isFinalWinner ? (
+          <Box sx={{ textAlign: "center", pt: 0.5 }}>
+            <Typography
+              sx={{
+                fontFamily: "var(--font-display)",
+                fontSize: "34px",
+                lineHeight: 1.1,
+                letterSpacing: "1px",
+                color: "info.main",
+              }}
+            >
+              ROUND {round + 1}
+            </Typography>
+            <Typography
+              sx={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "13px",
+                letterSpacing: "3px",
+                color: "text.secondary",
+                mt: 0.25,
+              }}
+            >
+              MATCH {Math.min(currentMatch + 1, totalMatchesThisRound)} OF{" "}
+              {totalMatchesThisRound}
+            </Typography>
+          </Box>
+        ) : null}
+
+        {!isFinalWinner && boardVisible ? (
+          <Box
+            key={matchKey}
+            className="bracket-round-panel bracket-round-panel--visible"
+            sx={{
+              position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              gap: "22px",
+              mt: 0.75,
+            }}
+          >
             <Box
-              className="bracket-round-item bracket-round-item--winner"
+              className="bracket-round-item bracket-round-item--left"
               style={
                 {
-                  ["--bracket-item-delay" as "--bracket-item-delay"]: "180ms",
+                  ["--bracket-item-delay" as "--bracket-item-delay"]: "0ms",
                 } as CSSProperties
               }
             >
-              <GameItemCard
-                item={currentRoundItems[0]}
-                index={0}
-                handleVote={handleVote}
-                votes={null}
-                className="bracket-round-item__card"
-              />
+              {left ? (
+                <GameItemCard
+                  item={left}
+                  index={leftIndex}
+                  handleVote={handleVote}
+                  voters={leftVoters.voters}
+                  extraVoterCount={leftVoters.extraCount}
+                  votePct={leftPct}
+                  accentColor={leading === "left" ? "#e6a3b8" : null}
+                  className="bracket-round-item__card"
+                />
+              ) : null}
             </Box>
-          </Box>
-        ) : (
-          <Box
-            key={matchKey}
-            className={`bracket-round-panel${boardVisible ? " bracket-round-panel--visible" : " bracket-round-panel--hidden"}`}
-            sx={{ textAlign: "center", mt: 1 }}
-          >
-            <Stack
-              direction="row"
-              className="bracket-round-header"
-              sx={{ alignItems: "center", justifyContent: "center" }}
-            >
-              <Typography
-                variant="h4"
-                className="bracket-round-label"
-                sx={{
-                  color: (theme) => theme.palette.background.paper,
-                  marginRight: "16px",
-                }}
-              >
-                Round
-              </Typography>
-              <Box
-                className="bracket-round-banner"
-                sx={{
-                  backgroundColor: (theme) => theme.palette.background.paper,
-                  borderRadius: "12px",
-                  padding: "0 12px 0 8px",
-                  textShadow: "4px 4px 0 #A73E26",
-                }}
-              >
-                <Typography
-                  variant="h2"
-                  color="info"
-                  sx={{ lineHeight: 1, marginBottom: "-8px" }}
-                >
-                  {round + 1}
-                </Typography>
-              </Box>
-            </Stack>
 
-            <Stack
-              className="bracket-matchup-stack"
-              spacing={2}
-              sx={{ justifyContent: "center", marginTop: "28px" }}
-            >
+            {right ? (
               <Box
-                className={`bracket-round-item bracket-round-item--left${winnerIndex === leftIndex ? " bracket-round-item--winner" : ""}`}
+                sx={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  width: "52px",
+                  height: "52px",
+                  zIndex: 3,
+                  transform: "translate(-50%, -50%)",
+                }}
+                className="bracket-vs-badge"
+              >
+                <Box
+                  sx={{
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: "50%",
+                    backgroundColor: "#b8a8dd",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "12px",
+                      color: "#241c34",
+                    }}
+                  >
+                    VS
+                  </Typography>
+                </Box>
+              </Box>
+            ) : null}
+
+            {right ? (
+              <Box
+                className="bracket-round-item bracket-round-item--right"
                 style={
                   {
-                    ["--bracket-item-delay" as "--bracket-item-delay"]: "140ms",
+                    ["--bracket-item-delay" as "--bracket-item-delay"]: "60ms",
                   } as CSSProperties
                 }
               >
-                {left ? (
-                  <GameItemCard
-                    item={left}
-                    index={leftIndex}
-                    handleVote={handleVote}
-                    votes={leftVoteCount}
-                    className="bracket-round-item__card"
-                  />
-                ) : null}
+                <GameItemCard
+                  item={right}
+                  index={rightIndex}
+                  handleVote={handleVote}
+                  voters={rightVoters.voters}
+                  extraVoterCount={rightVoters.extraCount}
+                  votePct={rightPct}
+                  accentColor={leading === "right" ? "#8fd6c9" : null}
+                  className="bracket-round-item__card"
+                />
               </Box>
-
-              {right ? (
-                <Typography
-                  variant="h4"
-                  className="bracket-round-vs"
-                  sx={{
-                    color: (theme) => theme.palette.background.default,
-                    marginRight: "16px",
-                  }}
-                >
-                  vs
-                </Typography>
-              ) : null}
-
-              {right ? (
-                <Box
-                  className={`bracket-round-item bracket-round-item--right${winnerIndex === rightIndex ? " bracket-round-item--winner" : ""}`}
-                  style={
-                    {
-                      ["--bracket-item-delay" as "--bracket-item-delay"]:
-                        "360ms",
-                    } as CSSProperties
-                  }
-                >
-                  <GameItemCard
-                    item={right}
-                    index={rightIndex}
-                    handleVote={handleVote}
-                    votes={rightVoteCount}
-                    className="bracket-round-item__card"
-                  />
-                </Box>
-              ) : null}
-            </Stack>
-
-            {recentWinner ? (
-              <Typography
-                variant="h4"
-                sx={{
-                  mt: 2,
-                  color: (theme) => theme.palette.background.paper,
-                  textAlign: "center",
-                  textShadow: "3px 3px 0 #A73E26",
-                }}
-              >
-                Winner: {recentWinner}
-              </Typography>
             ) : null}
           </Box>
-        )}
+        ) : null}
+
+        {!isFinalWinner ? (
+          <Typography
+            sx={{
+              textAlign: "center",
+              fontFamily: "var(--font-heading)",
+              fontSize: "12px",
+              letterSpacing: "2px",
+              color: "text.secondary",
+            }}
+          >
+            {statusLine}
+          </Typography>
+        ) : null}
+
+        <Stack
+          direction="row"
+          sx={{
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "6px",
+            pt: 0.25,
+          }}
+        >
+          <Box
+            className="bracket-synced-dot"
+            sx={{
+              backgroundColor:
+                connected === false ? "text.secondary" : "#8fd6c9",
+            }}
+          />
+          <Typography
+            sx={{
+              fontFamily: "var(--font-mono-ui)",
+              fontSize: "10px",
+              letterSpacing: "1px",
+              color: "text.secondary",
+            }}
+          >
+            {connected === false ? "RECONNECTING" : `SYNCED ${connectTimeMs}ms`}
+          </Typography>
+        </Stack>
 
         {showIntro && left ? (
           <Box className="bracket-intro-overlay">
             <Box className="bracket-intro-stage">
               <Box
                 key={`${introKey}-card1`}
-                className={`bracket-intro-card bracket-intro-card--card1${introPhase === "card1" ? " is-active" : ""}`}
+                className="bracket-intro-card bracket-intro-card--card1"
               >
                 <GameItemCard
                   item={left}
                   index={leftIndex}
                   handleVote={handleVote}
-                  votes={leftVoteCount}
                   className="bracket-round-item__card"
                 />
               </Box>
 
               {introPhase !== "card1" ? (
-                <Typography
+                <Box
                   key={`${introKey}-vs`}
-                  className={`bracket-intro-vs${introPhase === "vs" || introPhase === "card2" ? " is-active" : ""}`}
-                  variant="h3"
+                  className="bracket-intro-vs"
+                  sx={{
+                    width: "52px",
+                    height: "52px",
+                    borderRadius: "50%",
+                    backgroundColor: "#b8a8dd",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
                 >
-                  vs
-                </Typography>
+                  <Typography
+                    sx={{
+                      fontFamily: "var(--font-display)",
+                      fontSize: "14px",
+                      color: "#241c34",
+                    }}
+                  >
+                    VS
+                  </Typography>
+                </Box>
               ) : null}
 
               {introPhase === "card2" && right ? (
                 <Box
                   key={`${introKey}-card2`}
-                  className="bracket-intro-card bracket-intro-card--card2 is-active"
+                  className="bracket-intro-card bracket-intro-card--card2"
                 >
                   <GameItemCard
                     item={right}
                     index={rightIndex}
                     handleVote={handleVote}
-                    votes={rightVoteCount}
                     className="bracket-round-item__card"
                   />
                 </Box>
@@ -430,21 +556,101 @@ export default function BracketGame({
             </Box>
           </Box>
         ) : null}
+
+        {isFinalWinner ? (
+          <Box className="bracket-winner-overlay">
+            {confetti.map((piece, i) => (
+              <Box
+                key={i}
+                className="bracket-confetti-piece"
+                sx={{
+                  left: `${piece.left}%`,
+                  backgroundColor: piece.color,
+                  animationDuration: `${piece.duration}s`,
+                  animationDelay: `${piece.delay}s`,
+                }}
+              />
+            ))}
+            <Typography
+              sx={{
+                fontFamily: "var(--font-display)",
+                fontSize: "26px",
+                letterSpacing: "1px",
+                color: "info.main",
+                position: "relative",
+                zIndex: 2,
+              }}
+            >
+              WINNER
+            </Typography>
+            <Box
+              className="bracket-winner-card"
+              sx={{
+                width: "100%",
+                maxWidth: "300px",
+                borderRadius: "22px",
+                backgroundColor: "background.paper",
+                border: "2px solid #e6a3b8",
+                padding: "22px",
+                textAlign: "center",
+                position: "relative",
+                zIndex: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  height: "120px",
+                  borderRadius: "14px",
+                  overflow: "hidden",
+                  position: "relative",
+                  marginBottom: "14px",
+                  background:
+                    "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 10px, rgba(255,255,255,0.015) 10px 20px)",
+                }}
+              >
+                {currentRoundItems[0]?.url ? (
+                  <Image
+                    src={currentRoundItems[0].url}
+                    alt={currentRoundItems[0].title}
+                    fill
+                    sizes="300px"
+                    style={{ objectFit: "cover" }}
+                  />
+                ) : null}
+              </Box>
+              <Typography
+                sx={{
+                  fontFamily: "var(--font-body)",
+                  fontWeight: 800,
+                  fontSize: "26px",
+                  color: "text.primary",
+                }}
+              >
+                {currentRoundItems[0]?.title}
+              </Typography>
+            </Box>
+            <Box
+              onClick={() =>
+                onPlayAgain ? onPlayAgain() : (window.location.href = "/play")
+              }
+              sx={{
+                cursor: "pointer",
+                padding: "13px 28px",
+                borderRadius: "14px",
+                backgroundColor: "#b8a8dd",
+                fontFamily: "var(--font-heading)",
+                fontSize: "14px",
+                letterSpacing: "2px",
+                color: "#241c34",
+                position: "relative",
+                zIndex: 2,
+              }}
+            >
+              PLAY AGAIN
+            </Box>
+          </Box>
+        ) : null}
       </Box>
     </Container>
   );
 }
-
-function countVotesForChoice(
-  matchVotes: Record<string, MatchVote> | null,
-  choice: number,
-) {
-  if (!matchVotes) {
-    return 0;
-  }
-
-  return Object.values(matchVotes).reduce((count, vote) => {
-    return vote?.choice === choice ? count + 1 : count;
-  }, 0);
-}
-

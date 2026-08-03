@@ -2,13 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 
-import {
-  Card,
-  CardActionArea,
-  CardContent,
-  Typography,
-  Chip,
-} from "@mui/material";
+import { Box, Card, CardActionArea, Typography } from "@mui/material";
 import MediaModal from "./media-modal";
 import Image from "next/image";
 
@@ -19,11 +13,20 @@ type Item = {
   height?: number;
 };
 
+export type Voter = {
+  id: string;
+  initials: string;
+  color: string;
+};
+
 type Props = {
   item: Item;
   index: number;
   handleVote: (args: { item: Item; index: number }) => void;
-  votes: number | null;
+  voters?: Voter[];
+  extraVoterCount?: number;
+  votePct?: number | null;
+  accentColor?: string | null;
   className?: string;
   style?: CSSProperties;
 };
@@ -32,7 +35,10 @@ export default function GameItemCard({
   item,
   index,
   handleVote,
-  votes,
+  voters = [],
+  extraVoterCount = 0,
+  votePct = null,
+  accentColor = null,
   className,
   style,
 }: Props) {
@@ -40,41 +46,83 @@ export default function GameItemCard({
 
   return (
     <>
-      <Card className={className} style={style}>
-        <CardActionArea sx={{ padding: 1 }}>
-          {item.url && (
-            <Image
-              src={item.url}
-              alt={item.title}
-              width={item.width}
-              height={item.height}
-              loading="eager"
-              style={{
-                width: "auto",
-                height: 400,
-                borderRadius: 8,
-                paddingBottom: "8px",
-              }}
-              onClick={() => setOpen(true)}
-            />
-          )}
-          <CardContent
-            onClick={() => handleVote({ item, index })}
-            sx={{
-              padding: 0,
-              display: "flex",
-              flexDirection: "row",
+      <Card
+        className={className}
+        style={style}
+        sx={{
+          borderRadius: "20px",
+          border: "2px solid",
+          borderColor: accentColor ?? "rgba(255,255,255,0.08)",
+          transition: "border-color 200ms ease-in, transform 200ms ease-in",
+          transform: accentColor ? "scale(1.015)" : "scale(1)",
+        }}
+      >
+        <CardActionArea onClick={() => handleVote({ item, index })}>
+          <Box
+            className="bracket-item-media"
+            onClick={(event) => {
+              if (item.url) {
+                event.stopPropagation();
+                setOpen(true);
+              }
             }}
           >
+            {item.url ? (
+              <Image
+                src={item.url}
+                alt={item.title}
+                fill
+                sizes="(max-width: 640px) 100vw, 480px"
+                style={{ objectFit: "cover" }}
+              />
+            ) : null}
+            {votePct !== null ? (
+              <Box
+                className="bracket-item-fill"
+                sx={{
+                  height: `${votePct}%`,
+                  backgroundColor: accentColor ?? "var(--sub)",
+                }}
+              />
+            ) : null}
+          </Box>
+          <Box sx={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
             <Typography
-              variant="h5"
-              color="primary"
-              sx={{ fontWeight: "bold", flexGrow: 1 }}
+              sx={{
+                fontFamily: "var(--font-body)",
+                fontWeight: 700,
+                fontSize: "19px",
+                color: "text.primary",
+              }}
             >
               {item.title}
             </Typography>
-            {votes !== null && <Chip label={votes} />}
-          </CardContent>
+            {voters.length > 0 || extraVoterCount > 0 ? (
+              <Box sx={{ display: "flex", alignItems: "center", minHeight: "24px" }}>
+                {voters.map((voter) => (
+                  <Box
+                    key={voter.id}
+                    className="bracket-voter-avatar"
+                    sx={{ backgroundColor: voter.color }}
+                  >
+                    {voter.initials}
+                  </Box>
+                ))}
+                {extraVoterCount > 0 ? (
+                  <Typography
+                    sx={{
+                      marginLeft: "4px",
+                      fontFamily: "var(--font-heading)",
+                      fontSize: "12px",
+                      color: "text.secondary",
+                    }}
+                  >
+                    +{extraVoterCount}
+                  </Typography>
+                ) : null}
+              </Box>
+            ) : null}
+          </Box>
         </CardActionArea>
       </Card>
 

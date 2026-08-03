@@ -8,7 +8,6 @@ import "./globals.css";
 import theme from "../src/theme";
 import UserProvider from "./user-provider";
 import { Container, Box } from "@mui/material";
-import NavBar from "./components/nav-bar";
 import BottomNav from "./components/bottom-nav";
 
 export default async function RootLayout(props: { children: React.ReactNode }) {
@@ -32,7 +31,6 @@ export default async function RootLayout(props: { children: React.ReactNode }) {
           <AppRouterCacheProvider options={{ enableCssLayer: true }}>
             <ThemeProvider theme={theme}>
               <CssBaseline />
-              <NavBar />
               <Container maxWidth="md">
                 <Box
                   sx={{

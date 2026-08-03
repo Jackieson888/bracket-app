@@ -29,6 +29,9 @@ export default function Play() {
   const [slug, setSlug] = useState("");
   const [newestBrackets, setNewestBrackets] = useState<Item[]>([]);
   const [joinError, setJoinError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   void user;
 
@@ -104,24 +107,37 @@ export default function Play() {
     }
   };
 
-  return (
-    <Container maxWidth="md">
-      <Stack spacing={2.5} sx={{ py: { xs: 1.5, sm: 2 } }}>
-        <Box
-          sx={{
-            borderRadius: 3,
-            p: { xs: 1.75, sm: 2.25 },
-            background:
-              "linear-gradient(135deg, rgba(22,63,95,0.16) 0%, rgba(173,86,33,0.16) 100%)",
-            border: "1px solid rgba(255,255,255,0.18)",
-          }}
-        >
-          <Typography variant="h4">Play Live Brackets</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Join an existing room code or launch a live match from a bracket.
-          </Typography>
-        </Box>
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      setSearchError("Please enter a search query.");
+      return;
+    }
 
+    try {
+      setSearchLoading(true);
+      setSearchError("");
+
+      const response = await fetch(
+        `/api/brackets?search=${encodeURIComponent(searchQuery)}`,
+      );
+      if (!response.ok) {
+        setSearchError("Unable to search brackets right now.");
+        return;
+      }
+
+      const data = await response.json();
+      setNewestBrackets(data.brackets ?? []);
+    } catch (err) {
+      console.error("Error searching brackets:", err);
+      setSearchError("Unable to search brackets.");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  return (
+    <Container maxWidth="md" sx={{ p: { xs: 1.5, sm: 2 } }}>
+      <Stack spacing={2.5} sx={{ py: { xs: 1.5, sm: 2 } }}>
         <Box
           component="form"
           autoComplete="off"
@@ -133,6 +149,7 @@ export default function Play() {
             display: "flex",
             flexDirection: "column",
             gap: 1.75,
+            width: "stretch",
             borderRadius: 3,
             p: { xs: 1.75, sm: 2.25 },
             border: "1px solid",
@@ -158,19 +175,17 @@ export default function Play() {
 
           {joinError ? <Alert severity="error">{joinError}</Alert> : null}
 
-          <Button variant="contained" size="large" type="submit" disabled={joinLoading}>
+          <Button
+            variant="contained"
+            size="large"
+            type="submit"
+            disabled={joinLoading}
+          >
             {joinLoading ? "Checking Room..." : "Enter Room"}
           </Button>
         </Box>
 
         <Divider sx={{ bgcolor: (theme) => theme.palette.secondary.main }} />
-
-        <Stack spacing={1}>
-          <Typography variant="h6">Start A New Live Room</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Pick one of your recent brackets to generate a room instantly.
-          </Typography>
-        </Stack>
 
         {bracketsLoading ? (
           <Typography variant="body2" color="text.secondary">
@@ -182,6 +197,7 @@ export default function Play() {
           sx={{
             my: 0.5,
             display: "flex",
+            width: "stretch",
             flexDirection: "column",
             justifyContent: "center",
             alignItems: "center",
@@ -204,8 +220,50 @@ export default function Play() {
             ))}
           </Stack>
         </Box>
+
+        <Box
+          component="form"
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1.75,
+            width: "stretch",
+            borderRadius: 3,
+            p: { xs: 1.75, sm: 2.25 },
+            border: "1px solid",
+            borderColor: "divider",
+            backgroundColor: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <Typography variant="h6">Find A Bracket</Typography>
+          <TextField
+            id="title-input"
+            label="Search Brackets"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+            }}
+            helperText="Search brackets by title."
+            fullWidth
+          />
+
+          {searchError ? <Alert severity="error">{searchError}</Alert> : null}
+
+          <Button
+            variant="contained"
+            size="large"
+            type="submit"
+            disabled={searchLoading}
+          >
+            {searchLoading ? "Searching..." : "Search"}
+          </Button>
+        </Box>
       </Stack>
     </Container>
   );
 }
-

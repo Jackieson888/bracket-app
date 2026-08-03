@@ -107,7 +107,7 @@ export default function BracketCard({ item, index, id, onPlayItem }: { item: Bra
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            backgroundColor: "#E79F7F",
+            backgroundColor: "#F0C69F",
           }}
         >
           <IconButton

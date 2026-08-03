@@ -34,7 +34,13 @@ export async function GET(req: Request) {
     const db = client.db("test");
     const brackets = db.collection("brackets");
 
-    const results = await brackets.find().toArray();
+    const query = req.url.includes("?") ? new URL(req.url).searchParams : null;
+
+    const search = query?.get("search") ?? "";
+    const results = await brackets
+      .find({ title: { $regex: search, $options: "i" } })
+      .limit(5)
+      .toArray();
 
     return Response.json({ success: true, brackets: results });
   } catch (err) {

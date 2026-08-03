@@ -109,7 +109,7 @@ export default function BracketItemCard({
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            backgroundColor: "#E79F7F",
+            backgroundColor: "#F0C69F",
           }}
         >
           <IconButton
