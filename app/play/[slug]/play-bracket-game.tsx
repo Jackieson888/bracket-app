@@ -690,8 +690,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                 fontFamily: "var(--font-display)",
                 fontSize: "26px",
                 letterSpacing: "1px",
-                color: "var(--peach)",
-                textShadow: "0 0 18px rgba(240,198,159,0.3)",
+                color: "var(--accent)",
+                textShadow: "0 0 18px rgba(var(--accent-rgb),0.3)",
               }}
             >
               WAITING ROOM
@@ -730,8 +730,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                 gap: "8px",
                 padding: "8px 16px",
                 borderRadius: "999px",
-                backgroundColor: "rgba(230,163,184,0.15)",
-                border: "1px solid rgba(230,163,184,0.3)",
+                backgroundColor: "rgba(var(--primary-rgb),0.15)",
+                border: "1px solid rgba(var(--primary-rgb),0.3)",
               }}
             >
               <Typography
@@ -739,16 +739,16 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                   fontFamily: "var(--font-mono-ui)",
                   fontSize: "15px",
                   letterSpacing: "3px",
-                  color: "var(--pink)",
+                  color: "var(--primary)",
                   fontWeight: 700,
                 }}
               >
                 {slug}
               </Typography>
               {roomCopied ? (
-                <CheckCircle sx={{ fontSize: 14, color: "var(--teal)" }} />
+                <CheckCircle sx={{ fontSize: 14, color: "var(--secondary)" }} />
               ) : (
-                <ContentCopy sx={{ fontSize: 13, color: "var(--pink)" }} />
+                <ContentCopy sx={{ fontSize: 13, color: "var(--primary)" }} />
               )}
             </Box>
             <Box
@@ -761,7 +761,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                 backgroundColor: "rgba(255,255,255,0.05)",
               }}
             >
-              <Box className="bracket-synced-dot" sx={{ backgroundColor: "var(--teal)" }} />
+              <Box className="bracket-synced-dot" sx={{ backgroundColor: "var(--secondary)" }} />
               <Typography
                 sx={{
                   fontFamily: "var(--font-heading)",
@@ -801,7 +801,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                   background: "transparent",
                   border: "none",
                   outline: "none",
-                  borderBottom: "2px solid rgba(230,163,184,0.4)",
+                  borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                   paddingBottom: "8px",
                   fontFamily: "var(--font-body)",
                   fontWeight: 600,
@@ -824,7 +824,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                   alignItems: "center",
                   padding: "0 16px",
                   borderRadius: "12px",
-                  backgroundColor: "var(--lav)",
+                  backgroundColor: "var(--tertiary)",
                 }}
               >
                 <Typography
@@ -832,7 +832,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                     fontFamily: "var(--font-heading)",
                     fontSize: "12px",
                     letterSpacing: "1.5px",
-                    color: "#241c34",
+                    color: "var(--card)",
                   }}
                 >
                   {joinLoading ? "SAVING..." : "UPDATE"}
@@ -879,7 +879,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                       justifyContent: "center",
                       fontFamily: "var(--font-heading)",
                       fontSize: "10px",
-                      color: "#241c34",
+                      color: "var(--card)",
                       flexShrink: 0,
                     }}
                   >
@@ -901,7 +901,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                         fontFamily: "var(--font-heading)",
                         fontSize: "9px",
                         letterSpacing: "1px",
-                        color: "var(--peach)",
+                        color: "var(--accent)",
                       }}
                     >
                       HOST
@@ -941,7 +941,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                 textAlign: "center",
                 padding: "16px",
                 borderRadius: "16px",
-                backgroundColor: "var(--peach)",
+                backgroundColor: "var(--accent)",
                 mt: "4px",
               }}
             >
@@ -950,7 +950,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                   fontFamily: "var(--font-display)",
                   fontSize: "17px",
                   letterSpacing: "1px",
-                  color: "#241c34",
+                  color: "var(--card)",
                 }}
               >
                 {startLoading ? "STARTING..." : "START GAME"}

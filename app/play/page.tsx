@@ -170,7 +170,7 @@ export default function Play() {
                 background: "transparent",
                 border: "none",
                 outline: "none",
-                borderBottom: "2px solid rgba(230,163,184,0.4)",
+                borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-heading)",
                 letterSpacing: "2px",
@@ -186,7 +186,7 @@ export default function Play() {
             </Typography>
             {joinError ? (
               <Typography
-                sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--pink)" }}
+                sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--primary)" }}
               >
                 {joinError}
               </Typography>
@@ -201,7 +201,7 @@ export default function Play() {
                 textAlign: "center",
                 padding: "14px",
                 borderRadius: "14px",
-                backgroundColor: "var(--pink)",
+                backgroundColor: "var(--primary)",
               }}
             >
               <Typography
@@ -209,7 +209,7 @@ export default function Play() {
                   fontFamily: "var(--font-display)",
                   fontSize: "15px",
                   letterSpacing: "1px",
-                  color: "#241c34",
+                  color: "var(--card)",
                 }}
               >
                 {joinLoading ? "CHECKING ROOM..." : "ENTER ROOM"}
@@ -272,7 +272,7 @@ export default function Play() {
                 background: "transparent",
                 border: "none",
                 outline: "none",
-                borderBottom: "2px solid rgba(184,168,221,0.4)",
+                borderBottom: "2px solid rgba(var(--tertiary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-body)",
                 fontSize: "16px",
@@ -286,7 +286,7 @@ export default function Play() {
             </Typography>
             {searchError ? (
               <Typography
-                sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--pink)" }}
+                sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--primary)" }}
               >
                 {searchError}
               </Typography>
@@ -301,7 +301,7 @@ export default function Play() {
                 textAlign: "center",
                 padding: "14px",
                 borderRadius: "14px",
-                backgroundColor: "var(--pink)",
+                backgroundColor: "var(--primary)",
               }}
             >
               <Typography
@@ -309,7 +309,7 @@ export default function Play() {
                   fontFamily: "var(--font-display)",
                   fontSize: "15px",
                   letterSpacing: "1px",
-                  color: "#241c34",
+                  color: "var(--card)",
                 }}
               >
                 {searchLoading ? "SEARCHING..." : "SEARCH"}

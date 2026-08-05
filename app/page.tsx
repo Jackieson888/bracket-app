@@ -3,10 +3,10 @@
 import { Box, Typography } from "@mui/material";
 
 const SPLASH_PARTICLE_COLORS = [
-  "var(--pink)",
-  "var(--teal)",
-  "var(--lav)",
-  "var(--peach)",
+  "var(--primary)",
+  "var(--secondary)",
+  "var(--tertiary)",
+  "var(--accent)",
 ];
 
 const SPLASH_PARTICLES = Array.from({ length: 14 }, (_, i) => {
@@ -56,7 +56,7 @@ export default function Home() {
           <Typography
             component="span"
             className="splash-wordmark-word"
-            sx={{ color: "var(--pink)" }}
+            sx={{ color: "var(--primary)" }}
           >
             THIS
           </Typography>
@@ -66,7 +66,7 @@ export default function Home() {
               sx={{
                 fontFamily: "var(--font-display)",
                 fontSize: "15px",
-                color: "#241c34",
+                color: "var(--card)",
               }}
             >
               VS
@@ -75,7 +75,7 @@ export default function Home() {
           <Typography
             component="span"
             className="splash-wordmark-word"
-            sx={{ color: "var(--teal)" }}
+            sx={{ color: "var(--secondary)" }}
           >
             THAT
           </Typography>
@@ -104,7 +104,7 @@ export default function Home() {
               textDecoration: "none",
               padding: "15px 40px",
               borderRadius: "999px",
-              backgroundColor: "var(--peach)",
+              backgroundColor: "var(--accent)",
             }}
           >
             <Typography
@@ -112,7 +112,7 @@ export default function Home() {
                 fontFamily: "var(--font-display)",
                 fontSize: "15px",
                 letterSpacing: "1.5px",
-                color: "#241c34",
+                color: "var(--card)",
               }}
             >
               PLAY
@@ -127,7 +127,7 @@ export default function Home() {
               textDecoration: "none",
               padding: "15px 40px",
               borderRadius: "999px",
-              backgroundColor: "var(--lav)",
+              backgroundColor: "var(--tertiary)",
             }}
           >
             <Typography
@@ -135,7 +135,7 @@ export default function Home() {
                 fontFamily: "var(--font-display)",
                 fontSize: "15px",
                 letterSpacing: "1.5px",
-                color: "#241c34",
+                color: "var(--card)",
               }}
             >
               CREATE

@@ -21,12 +21,12 @@ type MatchVote = {
 };
 
 const VOTER_COLOR_POOL = [
-  "#e6a3b8",
-  "#8fd6c9",
-  "#b8a8dd",
-  "#f0c69f",
-  "#a8c9e0",
-  "#d9c98f",
+  "var(--primary)",
+  "var(--secondary)",
+  "var(--tertiary)",
+  "var(--accent)",
+  "var(--deep)",
+  "var(--primary-dark)",
 ];
 
 function colorForParticipant(id: string) {
@@ -382,7 +382,7 @@ export default function BracketGame({
                   voters={leftVoters.voters}
                   extraVoterCount={leftVoters.extraCount}
                   votePct={leftPct}
-                  accentColor={leading === "left" ? "#e6a3b8" : null}
+                  accentColor={leading === "left" ? "var(--primary)" : null}
                   className="bracket-round-item__card"
                 />
               ) : null}
@@ -406,7 +406,7 @@ export default function BracketGame({
                     width: "52px",
                     height: "52px",
                     borderRadius: "50%",
-                    backgroundColor: "#b8a8dd",
+                    backgroundColor: "var(--tertiary)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -416,7 +416,7 @@ export default function BracketGame({
                     sx={{
                       fontFamily: "var(--font-display)",
                       fontSize: "12px",
-                      color: "#241c34",
+                      color: "var(--card)",
                     }}
                   >
                     VS
@@ -441,7 +441,7 @@ export default function BracketGame({
                   voters={rightVoters.voters}
                   extraVoterCount={rightVoters.extraCount}
                   votePct={rightPct}
-                  accentColor={leading === "right" ? "#8fd6c9" : null}
+                  accentColor={leading === "right" ? "var(--secondary)" : null}
                   className="bracket-round-item__card"
                 />
               </Box>
@@ -476,7 +476,7 @@ export default function BracketGame({
             className="bracket-synced-dot"
             sx={{
               backgroundColor:
-                connected === false ? "text.secondary" : "#8fd6c9",
+                connected === false ? "text.secondary" : "var(--secondary)",
             }}
           />
           <Typography
@@ -514,7 +514,7 @@ export default function BracketGame({
                     width: "52px",
                     height: "52px",
                     borderRadius: "50%",
-                    backgroundColor: "#b8a8dd",
+                    backgroundColor: "var(--tertiary)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -524,7 +524,7 @@ export default function BracketGame({
                     sx={{
                       fontFamily: "var(--font-display)",
                       fontSize: "14px",
-                      color: "#241c34",
+                      color: "var(--card)",
                     }}
                   >
                     VS
@@ -582,7 +582,7 @@ export default function BracketGame({
                 maxWidth: "300px",
                 borderRadius: "22px",
                 backgroundColor: "background.paper",
-                border: "2px solid #e6a3b8",
+                border: "2px solid var(--primary)",
                 padding: "22px",
                 textAlign: "center",
                 position: "relative",
@@ -640,11 +640,11 @@ export default function BracketGame({
                     cursor: "pointer",
                     padding: "13px 28px",
                     borderRadius: "14px",
-                    backgroundColor: "var(--peach)",
+                    backgroundColor: "var(--accent)",
                     fontFamily: "var(--font-heading)",
                     fontSize: "14px",
                     letterSpacing: "2px",
-                    color: "#241c34",
+                    color: "var(--card)",
                   }}
                 >
                   PLAY AGAIN
@@ -659,11 +659,11 @@ export default function BracketGame({
                   cursor: "pointer",
                   padding: "13px 28px",
                   borderRadius: "14px",
-                  backgroundColor: "#b8a8dd",
+                  backgroundColor: "var(--tertiary)",
                   fontFamily: "var(--font-heading)",
                   fontSize: "14px",
                   letterSpacing: "2px",
-                  color: "#241c34",
+                  color: "var(--card)",
                 }}
               >
                 DIFFERENT BRACKET

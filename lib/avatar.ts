@@ -1,4 +1,9 @@
-export const SWATCHES = ["var(--pink)", "var(--teal)", "var(--lav)", "var(--peach)"];
+export const SWATCHES = [
+  "var(--primary)",
+  "var(--secondary)",
+  "var(--tertiary)",
+  "var(--accent)",
+];
 
 export function swatchForIndex(index: number) {
   return SWATCHES[index % SWATCHES.length];

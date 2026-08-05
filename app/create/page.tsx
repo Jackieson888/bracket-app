@@ -149,7 +149,7 @@ export default function CreateBracketPage() {
                 background: "transparent",
                 border: "none",
                 outline: "none",
-                borderBottom: "2px solid rgba(230,163,184,0.4)",
+                borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-body)",
                 fontWeight: 600,
@@ -229,7 +229,7 @@ export default function CreateBracketPage() {
               textAlign: "center",
               padding: "16px",
               borderRadius: "16px",
-              backgroundColor: "var(--peach)",
+              backgroundColor: "var(--accent)",
             }}
           >
             <Typography
@@ -237,7 +237,7 @@ export default function CreateBracketPage() {
                 fontFamily: "var(--font-display)",
                 fontSize: "17px",
                 letterSpacing: "1px",
-                color: "#241c34",
+                color: "var(--card)",
               }}
             >
               {user ? "SAVE BRACKET" : "PLAY BRACKET"}

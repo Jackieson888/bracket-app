@@ -76,7 +76,7 @@ export default function BracketCard({
             fontFamily: "var(--font-heading)",
             fontSize: "19px",
             letterSpacing: "0.5px",
-            color: "var(--pink)",
+            color: "var(--primary)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -96,7 +96,7 @@ export default function BracketCard({
               justifyContent: "center",
               fontFamily: "var(--font-heading)",
               fontSize: "10px",
-              color: "#241c34",
+              color: "var(--card)",
               flexShrink: 0,
             }}
           >
@@ -107,7 +107,7 @@ export default function BracketCard({
               fontFamily: "var(--font-body)",
               fontWeight: 700,
               fontSize: "12px",
-              color: "var(--pink)",
+              color: "var(--primary)",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -158,14 +158,14 @@ export default function BracketCard({
           cursor: "pointer",
           width: "50px",
           flexShrink: 0,
-          backgroundColor: "var(--peach)",
+          backgroundColor: "var(--accent)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path d="M6 4v16l14-8Z" fill="var(--teal)" />
+          <path d="M6 4v16l14-8Z" fill="var(--secondary)" />
         </svg>
       </Box>
     </Box>

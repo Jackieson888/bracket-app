@@ -2,15 +2,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #211a2e;
-  --foreground: #f2eef7;
-  --sub: #9184ad;
-  --card: #241c34;
-  --card-elevated: #2c2440;
-  --pink: #e6a3b8;
-  --teal: #8fd6c9;
-  --lav: #b8a8dd;
-  --peach: #f0c69f;
+  /* Brand colors: sage #87BEB4, terracotta #C67664, deep teal #385D66 */
+  --background: #0c1416;
+  --foreground: #f1f4f4;
+  --sub: #9fb1b6;
+  --card: #152327;
+  --card-elevated: #1f3338;
+
+  --primary: #c67664;
+  --primary-dark: #9a5c4e;
+  --secondary: #87beb4;
+  --tertiary: #92a6ab;
+  --accent: #d8a296;
+  --deep: #385d66;
+
+  --primary-rgb: 198, 118, 100;
+  --secondary-rgb: 135, 190, 180;
+  --tertiary-rgb: 146, 166, 171;
+  --accent-rgb: 216, 162, 150;
+  --deep-rgb: 56, 93, 102;
+  --background-rgb: 12, 20, 22;
   --font-heading: "Bebas Neue", sans-serif;
   --font-display: "Ultra", serif;
   --font-body: "Poppins", sans-serif;
@@ -23,6 +34,15 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sub: var(--sub);
+  --color-card: var(--card);
+  --color-card-elevated: var(--card-elevated);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-secondary: var(--secondary);
+  --color-tertiary: var(--tertiary);
+  --color-accent: var(--accent);
+  --color-deep: var(--deep);
   --font-sans: var(--font-body);
   --font-mono: var(--font-mono-ui);
 }
@@ -61,7 +81,7 @@ samp {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--pink);
+  background: var(--primary);
   animation: pulseSoft 1.6s ease-in-out infinite;
 }
 
@@ -100,10 +120,10 @@ samp {
 @keyframes glowPulse {
   0%,
   100% {
-    box-shadow: 0 0 0 rgba(240, 198, 159, 0);
+    box-shadow: 0 0 0 rgba(var(--accent-rgb), 0);
   }
   50% {
-    box-shadow: 0 0 22px rgba(240, 198, 159, 0.28);
+    box-shadow: 0 0 22px rgba(var(--accent-rgb), 0.28);
   }
 }
 
@@ -111,7 +131,7 @@ samp {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--teal);
+  background: var(--secondary);
 }
 
 /* Match cards */
@@ -194,7 +214,7 @@ samp {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(33, 26, 46, 0.94);
+  background: rgba(var(--background-rgb), 0.94);
   backdrop-filter: blur(8px);
   animation: fadeIn 150ms ease-out both;
 }
@@ -376,19 +396,19 @@ samp {
 @keyframes bracketWinnerEmphasis {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 rgba(230, 163, 184, 0);
+    box-shadow: 0 0 0 rgba(var(--primary-rgb), 0);
   }
   35% {
     transform: scale(1.03);
-    box-shadow: 0 0 0 10px rgba(230, 163, 184, 0.15);
+    box-shadow: 0 0 0 10px rgba(var(--primary-rgb), 0.15);
   }
   70% {
     transform: scale(1.012);
-    box-shadow: 0 0 0 4px rgba(230, 163, 184, 0.08);
+    box-shadow: 0 0 0 4px rgba(var(--primary-rgb), 0.08);
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 rgba(230, 163, 184, 0);
+    box-shadow: 0 0 0 rgba(var(--primary-rgb), 0);
   }
 }
 
@@ -410,7 +430,7 @@ samp {
   inset: 0;
   background: radial-gradient(
     circle at 50% 30%,
-    rgba(184, 168, 221, 0.16),
+    rgba(var(--secondary-rgb), 0.16),
     transparent 60%
   );
 }
@@ -426,9 +446,9 @@ samp {
   overflow: hidden;
   background: linear-gradient(
     180deg,
-    var(--peach) 0%,
-    var(--pink) 48%,
-    var(--lav) 100%
+    var(--accent) 0%,
+    var(--primary) 48%,
+    var(--tertiary) 100%
   );
   animation: sunPulse 4s ease-in-out infinite;
 }
@@ -462,8 +482,8 @@ samp {
   bottom: 0;
   height: 220%;
   background-image:
-    linear-gradient(rgba(230, 163, 184, 0.65) 2px, transparent 2px),
-    linear-gradient(90deg, rgba(230, 163, 184, 0.65) 2px, transparent 2px);
+    linear-gradient(rgba(var(--primary-rgb), 0.65) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(var(--primary-rgb), 0.65) 2px, transparent 2px);
   background-size:
     100% 34px,
     34px 100%;
@@ -519,14 +539,14 @@ samp {
   justify-content: center;
   gap: 12px;
   animation: logoPop 0.4s ease-out both;
-  filter: drop-shadow(0 0 22px rgba(240, 198, 159, 0.35));
+  filter: drop-shadow(0 0 22px rgba(var(--accent-rgb), 0.35));
 }
 
 .splash-wordmark-word {
   font-family: var(--font-display);
   font-size: 40px;
   letter-spacing: 1px;
-  text-shadow: 3px 3px 0 var(--lav);
+  text-shadow: 3px 3px 0 var(--tertiary);
 }
 
 .splash-wordmark-badge {
@@ -536,9 +556,9 @@ samp {
   width: 46px;
   height: 46px;
   border-radius: 50%;
-  background: var(--peach);
+  background: var(--accent);
   flex-shrink: 0;
-  box-shadow: 3px 3px 0 var(--lav);
+  box-shadow: 3px 3px 0 var(--tertiary);
 }
 
 .splash-tagline {
@@ -568,13 +588,13 @@ samp {
   0%,
   100% {
     box-shadow:
-      0 0 70px rgba(240, 198, 159, 0.35),
-      0 0 140px rgba(230, 163, 184, 0.18);
+      0 0 70px rgba(var(--accent-rgb), 0.35),
+      0 0 140px rgba(var(--primary-rgb), 0.18);
   }
   50% {
     box-shadow:
-      0 0 100px rgba(240, 198, 159, 0.5),
-      0 0 180px rgba(230, 163, 184, 0.28);
+      0 0 100px rgba(var(--accent-rgb), 0.5),
+      0 0 180px rgba(var(--primary-rgb), 0.28);
   }
 }
 

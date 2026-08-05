@@ -79,8 +79,8 @@ export default function NewBracketItemCard({
       sx={{
         display: "flex",
         alignItems: "stretch",
-        backgroundColor: "rgba(44,36,64,0.55)",
-        border: "2px dashed var(--lav)",
+        backgroundColor: "rgba(var(--tertiary-rgb),0.12)",
+        border: "2px dashed var(--tertiary)",
         borderRadius: "18px",
         overflow: "hidden",
       }}
@@ -112,7 +112,7 @@ export default function NewBracketItemCard({
                 fontFamily: "var(--font-body)",
                 fontSize: "16px",
                 color: "text.primary",
-                borderBottom: "1px solid rgba(184,168,221,0.4)",
+                borderBottom: "1px solid rgba(var(--tertiary-rgb),0.4)",
                 paddingBottom: "8px",
               },
             },
@@ -123,7 +123,7 @@ export default function NewBracketItemCard({
         sx={{
           width: "50px",
           flexShrink: 0,
-          backgroundColor: "var(--peach)",
+          backgroundColor: "var(--accent)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -148,14 +148,14 @@ export default function NewBracketItemCard({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path
               d="M12 16V4m0 0-4 4m4-4 4 4"
-              stroke="#241c34"
+              stroke="var(--card)"
               strokeWidth="2.2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
             <path
               d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-              stroke="#241c34"
+              stroke="var(--card)"
               strokeWidth="2.2"
               strokeLinecap="round"
             />
@@ -182,7 +182,7 @@ export default function NewBracketItemCard({
           }}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="#241c34" strokeWidth="2.4" strokeLinecap="round" />
+            <path d="M12 5v14M5 12h14" stroke="var(--card)" strokeWidth="2.4" strokeLinecap="round" />
           </svg>
         </Box>
       </Box>

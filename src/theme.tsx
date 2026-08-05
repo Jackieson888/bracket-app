@@ -15,40 +15,42 @@ const theme = createTheme({
     h5: { fontFamily: "var(--font-heading)", letterSpacing: 0.5 },
     h6: { fontFamily: "var(--font-heading)", letterSpacing: 0.5 },
   },
+  // Palette values mirror the CSS custom properties defined in app/globals.css
+  // (brand colors: sage #87BEB4, terracotta #C67664, deep teal #385D66) — keep in sync.
   palette: {
     mode: "dark",
     common: {
-      black: "#211A2E",
-      white: "#F2EEF7",
+      black: "#0C1416",
+      white: "#F1F4F4",
     },
     primary: {
-      main: "#E6A3B8",
-      dark: "#D488A0",
-      contrastText: "#241C34",
+      main: "#C67664",
+      dark: "#9A5C4E",
+      contrastText: "#152327",
     },
     secondary: {
-      main: "#8FD6C9",
-      contrastText: "#241C34",
+      main: "#87BEB4",
+      contrastText: "#152327",
     },
     info: {
-      main: "#F0C69F",
-      contrastText: "#241C34",
+      main: "#D8A296",
+      contrastText: "#152327",
     },
     warning: {
-      main: "#E6A3B8",
-      contrastText: "#241C34",
+      main: "#C67664",
+      contrastText: "#152327",
     },
     success: {
-      main: "#8FD6C9",
-      contrastText: "#241C34",
+      main: "#87BEB4",
+      contrastText: "#152327",
     },
     background: {
-      default: "#211A2E",
-      paper: "#241C34",
+      default: "#0C1416",
+      paper: "#1F3338",
     },
     text: {
-      primary: "#F2EEF7",
-      secondary: "#9184AD",
+      primary: "#F1F4F4",
+      secondary: "#9FB1B6",
     },
     divider: "rgba(255,255,255,0.08)",
   },
@@ -56,7 +58,7 @@ const theme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          background: "#241C34",
+          background: "#152327",
         },
       },
     },
@@ -128,7 +130,7 @@ const theme = createTheme({
     MuiOutlinedInput: {
       styleOverrides: {
         root: {
-          backgroundColor: "#2C2440",
+          backgroundColor: "#1F3338",
           borderRadius: "12px",
         },
         notchedOutline: {
@@ -140,8 +142,8 @@ const theme = createTheme({
       styleOverrides: {
         badge: {
           inset: "8px auto auto 8px",
-          color: "#241C34",
-          background: "#E6A3B8",
+          color: "#152327",
+          background: "#C67664",
           fontWeight: "bold",
         },
       },

@@ -35,7 +35,7 @@ export default function BottomNav() {
         right: 0,
         zIndex: 1100,
         borderTop: "1px solid rgba(255,255,255,0.06)",
-        backgroundColor: "rgba(36,28,52,0.92)",
+        backgroundColor: "rgba(var(--background-rgb),0.92)",
         backdropFilter: "blur(6px)",
         borderRadius: 0,
       }}
@@ -61,7 +61,7 @@ export default function BottomNav() {
             letterSpacing: "1.5px",
           },
           "& .Mui-selected": {
-            color: "var(--pink)",
+            color: "var(--primary)",
             opacity: 1,
           },
         }}
@@ -83,10 +83,10 @@ export default function BottomNav() {
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: isActive
-                      ? "rgba(230,163,184,0.18)"
+                      ? "rgba(var(--primary-rgb),0.18)"
                       : "transparent",
                     boxShadow: isActive
-                      ? "0 0 14px rgba(230,163,184,0.25)"
+                      ? "0 0 14px rgba(var(--primary-rgb),0.25)"
                       : "none",
                   }}
                 >
