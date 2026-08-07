@@ -52,7 +52,12 @@ export default function Home() {
       ))}
 
       <Box className="splash-content">
-        <Box className="splash-wordmark">
+        <Box
+          component="h1"
+          className="splash-wordmark"
+          aria-label="This vs That"
+          sx={{ margin: 0 }}
+        >
           <Typography
             component="span"
             className="splash-wordmark-word"

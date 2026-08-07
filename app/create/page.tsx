@@ -6,11 +6,14 @@ import BracketItemCard from "../components/bracket-item-card";
 import NewBracketItemCard from "../components/new-bracket-item-card";
 import PillLabel from "../components/pill-label";
 import { useState, useEffect } from "react";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
+import { visuallyHidden } from "@mui/utils";
 
 import {
   DndContext,
   closestCorners,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   DragOverlay,
@@ -20,6 +23,7 @@ import {
 
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   rectSortingStrategy,
   arrayMove,
 } from "@dnd-kit/sortable";
@@ -74,6 +78,11 @@ export default function CreateBracketPage() {
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
     }),
+    // Lets the focused drag handle be reordered with arrow keys, so
+    // reordering isn't only possible via a pointer drag gesture.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const handleAddItem = (item: Omit<BracketItem, "id">) => {
@@ -127,6 +136,9 @@ export default function CreateBracketPage() {
           padding: "22px 18px",
         }}
       >
+        <Typography component="h1" sx={visuallyHidden}>
+          Create a Bracket
+        </Typography>
         <Box className="bracket-pop-in" sx={{ position: "relative", mt: 1 }}>
           <PillLabel>BRACKET NAME</PillLabel>
           <Box
@@ -144,11 +156,16 @@ export default function CreateBracketPage() {
                 setTitle(e.target.value)
               }
               placeholder="Untitled Bracket"
+              aria-label="Bracket name"
               sx={{
                 width: "100%",
                 background: "transparent",
                 border: "none",
-                outline: "none",
+                outline: "2px solid transparent",
+                outlineOffset: "2px",
+                "&:focus-visible": {
+                  outline: "2px solid var(--primary)",
+                },
                 borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-body)",
@@ -222,9 +239,14 @@ export default function CreateBracketPage() {
         {isReady ? (
           <Box
             role="button"
+            tabIndex={0}
             onClick={user ? handleSaveBracket : handlePlayBracket}
+            onKeyDown={onActivateKeyDown(
+              user ? handleSaveBracket : handlePlayBracket,
+            )}
             className="bracket-glow-pulse"
             sx={{
+              ...focusableButtonSx,
               cursor: "pointer",
               textAlign: "center",
               padding: "16px",

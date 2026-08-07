@@ -7,6 +7,7 @@ import MediaModal from "./media-modal";
 import Image from "next/image";
 
 type Item = {
+  id?: string;
   url?: string;
   title: string;
   width?: number;

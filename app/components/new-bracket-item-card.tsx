@@ -2,9 +2,20 @@
 
 import { styled, Box, TextField } from "@mui/material";
 import React, { useState } from "react";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
+// display:none would remove this from the tab order entirely; clip it
+// visually instead so the label + input stay reachable by keyboard.
 const HiddenInput = styled("input")({
-  display: "none",
+  clip: "rect(0 0 0 0)",
+  clipPath: "inset(50%)",
+  height: 1,
+  overflow: "hidden",
+  position: "absolute",
+  bottom: 0,
+  left: 0,
+  whiteSpace: "nowrap",
+  width: 1,
 });
 
 type BracketItem = {
@@ -103,6 +114,7 @@ export default function NewBracketItemCard({
             }
           }}
           placeholder="Name this contender..."
+          aria-label="Contender name"
           variant="standard"
           fullWidth
           slotProps={{
@@ -123,7 +135,7 @@ export default function NewBracketItemCard({
         sx={{
           width: "50px",
           flexShrink: 0,
-          backgroundColor: "var(--accent)",
+          backgroundColor: "var(--primary)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -136,13 +148,18 @@ export default function NewBracketItemCard({
           aria-label="Upload media"
           sx={{
             cursor: "pointer",
-            width: "28px",
-            height: "28px",
+            width: "40px",
+            height: "40px",
             borderRadius: "8px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             opacity: file ? 1 : 0.65,
+            outline: "2px solid transparent",
+            outlineOffset: "2px",
+            "&:has(:focus-visible)": {
+              outline: "2px solid var(--primary)",
+            },
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -160,21 +177,32 @@ export default function NewBracketItemCard({
               strokeLinecap="round"
             />
           </svg>
-          <HiddenInput type="file" accept="image/*" onChange={handleFileSelect} />
+          <HiddenInput
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+          />
         </Box>
         <Box
           role="button"
+          tabIndex={0}
           aria-label="Add item"
           onClick={() => {
             if (!uploading) {
               void handleSubmit();
             }
           }}
+          onKeyDown={onActivateKeyDown(() => {
+            if (!uploading) {
+              void handleSubmit();
+            }
+          })}
           sx={{
+            ...focusableButtonSx,
             cursor: uploading ? "default" : "pointer",
             opacity: uploading ? 0.5 : 1,
-            width: "28px",
-            height: "28px",
+            width: "40px",
+            height: "40px",
             borderRadius: "8px",
             display: "flex",
             alignItems: "center",
@@ -182,7 +210,12 @@ export default function NewBracketItemCard({
           }}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="var(--card)" strokeWidth="2.4" strokeLinecap="round" />
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="var(--card)"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+            />
           </svg>
         </Box>
       </Box>

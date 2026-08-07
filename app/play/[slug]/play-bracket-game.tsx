@@ -6,6 +6,7 @@ import BracketGame from "@/app/components/bracket-game";
 import PillLabel from "@/app/components/pill-label";
 import { useUser } from "@/app/user-provider";
 import { initialsFor, swatchForIndex } from "@/lib/avatar";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 import { CheckCircle, ContentCopy } from "@mui/icons-material";
 
 type Session = {
@@ -30,13 +31,13 @@ type RoomClient = {
 type RoomState = {
   round: number;
   currentMatch: number;
-  currentRoundItems: Array<{ _id: string; title: string }>;
+  currentRoundItems: Array<{ id: string; title: string }>;
   matchSize?: number;
   votesByMatch?: Record<string, Record<string, { choice: number; at: number }>>;
   pendingVoteCount: number;
   requiredVoteCount?: number;
-  winner?: { _id: string; title: string } | null;
-  lastWinner?: { _id: string; title: string } | null;
+  winner?: { id: string; title: string } | null;
+  lastWinner?: { id: string; title: string } | null;
 };
 
 export default function PlayBracketGame({ slug }: { slug: string }) {
@@ -53,7 +54,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     Array<{ round: number; match: number; choice: number }>
   >([]);
   const [connectionError, setConnectionError] = useState("");
-  const [connectTimeMs, setConnectTimeMs] = useState<number | null>(null);
   const [sessionError, setSessionError] = useState("");
   const [sessionLoading, setSessionLoading] = useState(true);
   const [participantId, setParticipantId] = useState("");
@@ -265,7 +265,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       }
 
       setConnected(false);
-      const connectionStart = Date.now();
       let wsUrl: URL;
 
       if (configuredWsBaseUrl) {
@@ -326,7 +325,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
         setConnected(true);
         setConnectionError("");
-        setConnectTimeMs(Date.now() - connectionStart);
 
         nextSocket.send(
           JSON.stringify({
@@ -496,7 +494,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     const items =
       (
         session?.bracket as {
-          items?: Array<{ _id: string; title: string }>;
+          items?: Array<{ id: string; title: string }>;
         }
       )?.items ?? [];
 
@@ -686,7 +684,9 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         >
           <Box className="bracket-pop-in" sx={{ textAlign: "center" }}>
             <Typography
+              component="h1"
               sx={{
+                margin: 0,
                 fontFamily: "var(--font-display)",
                 fontSize: "26px",
                 letterSpacing: "1px",
@@ -695,17 +695,6 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               }}
             >
               WAITING ROOM
-            </Typography>
-            <Typography
-              sx={{
-                fontFamily: "var(--font-heading)",
-                fontSize: "12px",
-                letterSpacing: "3px",
-                color: "text.secondary",
-                mt: "3px",
-              }}
-            >
-              SET YOUR NAME, THEN GET READY
             </Typography>
           </Box>
 
@@ -721,9 +710,12 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           >
             <Box
               role="button"
+              tabIndex={0}
               aria-label={roomCopied ? "Room code copied" : "Copy room code"}
               onClick={handleCopyRoomCode}
+              onKeyDown={onActivateKeyDown(handleCopyRoomCode)}
               sx={{
+                ...focusableButtonSx,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -795,12 +787,17 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                   setDisplayName(e.target.value)
                 }
                 placeholder="Guest"
+                aria-label="Display name"
                 sx={{
                   flex: 1,
                   minWidth: 0,
                   background: "transparent",
                   border: "none",
-                  outline: "none",
+                  outline: "2px solid transparent",
+                  outlineOffset: "2px",
+                  "&:focus-visible": {
+                    outline: "2px solid var(--primary)",
+                  },
                   borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                   paddingBottom: "8px",
                   fontFamily: "var(--font-body)",
@@ -811,12 +808,20 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
               />
               <Box
                 role="button"
+                tabIndex={0}
+                aria-label="Update display name"
                 onClick={() => {
                   if (canUseSocket && !joinLoading && !startLoading) {
                     void handleJoinRoom();
                   }
                 }}
+                onKeyDown={onActivateKeyDown(() => {
+                  if (canUseSocket && !joinLoading && !startLoading) {
+                    void handleJoinRoom();
+                  }
+                })}
                 sx={{
+                  ...focusableButtonSx,
                   cursor: canUseSocket && !joinLoading && !startLoading ? "pointer" : "default",
                   opacity: canUseSocket && !joinLoading && !startLoading ? 1 : 0.5,
                   flexShrink: 0,
@@ -929,13 +934,20 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           {isHost ? (
             <Box
               role="button"
+              tabIndex={0}
               onClick={() => {
                 if (canUseSocket && !startLoading) {
                   handleStartGame();
                 }
               }}
+              onKeyDown={onActivateKeyDown(() => {
+                if (canUseSocket && !startLoading) {
+                  handleStartGame();
+                }
+              })}
               className="bracket-glow-pulse"
               sx={{
+                ...focusableButtonSx,
                 cursor: canUseSocket && !startLoading ? "pointer" : "default",
                 opacity: canUseSocket && !startLoading ? 1 : 0.6,
                 textAlign: "center",
@@ -997,12 +1009,14 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       {hasGameStarted ? (
         <BracketGame
           bracket={
-            session.bracket as { items?: Array<{ _id: string; title: string }> }
+            session.bracket as {
+              _id?: string;
+              items?: Array<{ id: string; title: string }>;
+            }
           }
           slug={slug}
           session={session}
           connected={connected}
-          connectTimeMs={connectTimeMs ?? undefined}
           participants={Object.fromEntries(
             clients.map((client) => [client.id, client.displayName || "Guest"]),
           )}

@@ -10,8 +10,12 @@ import {
 import { Box, Container, Stack, Typography } from "@mui/material";
 import Image from "next/image";
 
+import { ContentCopy, CheckCircle } from "@mui/icons-material";
+
 import GameItemCard, { type Voter } from "./game-item-card";
 import { initialsFor } from "@/lib/avatar";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
+import { buildShareCardUrl } from "@/lib/share-card";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
 
@@ -65,13 +69,13 @@ function votersForChoice(
 
 type BracketGameProps = {
   bracket?: {
+    _id?: string;
     items?: Item[];
     title?: string;
   };
   slug?: string;
   session?: unknown;
   connected?: boolean;
-  connectTimeMs?: number;
   participants?: Record<string, string>;
   roomState?: {
     round?: number;
@@ -94,7 +98,6 @@ export default function BracketGame({
   bracket,
   slug,
   connected,
-  connectTimeMs,
   participants = {},
   roomState,
   onVote,
@@ -107,6 +110,7 @@ export default function BracketGame({
   const [currentRoundItems, setCurrentRoundItems] = useState<Item[]>(
     () => bracket?.items ?? [],
   );
+  const [shareCopied, setShareCopied] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
   const [introPhase, setIntroPhase] = useState<"card1" | "vs" | "card2">(
     "card1",
@@ -127,6 +131,33 @@ export default function BracketGame({
       setCurrentMatch(roomState.currentMatch);
     }
   }, [roomState]);
+
+  const [bracketStats, setBracketStats] = useState<{
+    totalPlays: number;
+    itemStats: Array<{ itemId: string; title: string; wins: number }>;
+  } | null>(null);
+
+  useEffect(() => {
+    const bracketId = bracket?._id;
+    if (currentRoundItems.length !== 1 || !bracketId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    fetch(`/api/brackets/${bracketId}/stats`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.totalPlays === "number") {
+          setBracketStats(data);
+        }
+      })
+      .catch(() => {
+        // Non-critical — the winner screen just skips the stats line.
+      });
+
+    return () => controller.abort();
+  }, [currentRoundItems.length, bracket?._id]);
 
   const matchSize = Math.max(2, roomState?.matchSize ?? 2);
   const startIndex = currentMatch * matchSize;
@@ -196,6 +227,16 @@ export default function BracketGame({
     });
   };
 
+  const handleShare = async (shareUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 1400);
+    } catch {
+      window.open(shareUrl, "_blank", "noopener,noreferrer");
+    }
+  };
+
   useEffect(() => {
     if (currentRoundItems.length <= 1) {
       setShowIntro(false);
@@ -259,6 +300,14 @@ export default function BracketGame({
   }
 
   const isFinalWinner = currentRoundItems.length === 1;
+  const winnerItem = currentRoundItems[0];
+  const shareUrl = winnerItem
+    ? buildShareCardUrl({
+        imageUrl: winnerItem.url,
+        title: winnerItem.title,
+        cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+      })
+    : null;
 
   return (
     <Container>
@@ -329,7 +378,9 @@ export default function BracketGame({
         {!isFinalWinner ? (
           <Box sx={{ textAlign: "center", pt: 0.5 }}>
             <Typography
+              component="h1"
               sx={{
+                margin: 0,
                 fontFamily: "var(--font-display)",
                 fontSize: "34px",
                 lineHeight: 1.1,
@@ -463,33 +514,29 @@ export default function BracketGame({
           </Typography>
         ) : null}
 
-        <Stack
-          direction="row"
-          sx={{
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "6px",
-            pt: 0.25,
-          }}
-        >
-          <Box
-            className="bracket-synced-dot"
+        {connected === false ? (
+          <Stack
+            direction="row"
             sx={{
-              backgroundColor:
-                connected === false ? "text.secondary" : "var(--secondary)",
-            }}
-          />
-          <Typography
-            sx={{
-              fontFamily: "var(--font-mono-ui)",
-              fontSize: "10px",
-              letterSpacing: "1px",
-              color: "text.secondary",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              pt: 0.25,
             }}
           >
-            {connected === false ? "RECONNECTING" : `SYNCED ${connectTimeMs}ms`}
-          </Typography>
-        </Stack>
+            <Box className="bracket-synced-dot" sx={{ backgroundColor: "text.secondary" }} />
+            <Typography
+              sx={{
+                fontFamily: "var(--font-mono-ui)",
+                fontSize: "10px",
+                letterSpacing: "1px",
+                color: "text.secondary",
+              }}
+            >
+              RECONNECTING
+            </Typography>
+          </Stack>
+        ) : null}
 
         {showIntro && left ? (
           <Box className="bracket-intro-overlay">
@@ -564,7 +611,9 @@ export default function BracketGame({
               />
             ))}
             <Typography
+              component="h1"
               sx={{
+                margin: 0,
                 fontFamily: "var(--font-display)",
                 fontSize: "26px",
                 letterSpacing: "1px",
@@ -620,6 +669,32 @@ export default function BracketGame({
               >
                 {currentRoundItems[0]?.title}
               </Typography>
+              {bracketStats && bracketStats.totalPlays > 0
+                ? (() => {
+                    const winnerStat = bracketStats.itemStats.find(
+                      (stat) => stat.itemId === currentRoundItems[0]?.id,
+                    );
+                    if (!winnerStat) {
+                      return null;
+                    }
+
+                    return (
+                      <Typography
+                        sx={{
+                          mt: "6px",
+                          fontFamily: "var(--font-body)",
+                          fontSize: "12px",
+                          color: "text.secondary",
+                        }}
+                      >
+                        {winnerStat.title} has now won {winnerStat.wins} of{" "}
+                        {bracketStats.totalPlays}{" "}
+                        {bracketStats.totalPlays === 1 ? "play" : "plays"} of
+                        this bracket.
+                      </Typography>
+                    );
+                  })()
+                : null}
             </Box>
             <Stack
               direction="row"
@@ -634,9 +709,12 @@ export default function BracketGame({
               {isHost ? (
                 <Box
                   role="button"
+                  tabIndex={0}
                   onClick={() => onPlayAgain?.()}
+                  onKeyDown={onActivateKeyDown(() => onPlayAgain?.())}
                   className="bracket-glow-pulse"
                   sx={{
+                    ...focusableButtonSx,
                     cursor: "pointer",
                     padding: "13px 28px",
                     borderRadius: "14px",
@@ -668,6 +746,36 @@ export default function BracketGame({
               >
                 DIFFERENT BRACKET
               </Box>
+              {shareUrl ? (
+                <Box
+                  role="button"
+                  tabIndex={0}
+                  aria-label={shareCopied ? "Share link copied" : "Copy share link"}
+                  onClick={() => void handleShare(shareUrl)}
+                  onKeyDown={onActivateKeyDown(() => void handleShare(shareUrl))}
+                  sx={{
+                    ...focusableButtonSx,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    padding: "13px 28px",
+                    borderRadius: "14px",
+                    backgroundColor: "var(--secondary)",
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "14px",
+                    letterSpacing: "2px",
+                    color: "var(--card)",
+                  }}
+                >
+                  {shareCopied ? (
+                    <CheckCircle sx={{ fontSize: 16 }} />
+                  ) : (
+                    <ContentCopy sx={{ fontSize: 15 }} />
+                  )}
+                  {shareCopied ? "COPIED" : "SHARE"}
+                </Box>
+              ) : null}
             </Stack>
           </Box>
         ) : null}

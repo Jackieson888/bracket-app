@@ -3,6 +3,7 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { initialsFor, swatchForIndex } from "@/lib/avatar";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
 interface BracketItem {
   title: string;
@@ -11,6 +12,10 @@ interface BracketItem {
     picture: string;
   };
   items: unknown[];
+  stats?: {
+    playCount: number;
+    topItemTitle: string | null;
+  };
 }
 
 export default function BracketCard({
@@ -121,44 +126,47 @@ export default function BracketCard({
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: "2px",
-          padding: "0 12px",
+          padding: "0 10px",
           flexShrink: 0,
         }}
       >
         <Typography
           sx={{
             fontFamily: "var(--font-heading)",
-            fontSize: "10px",
-            letterSpacing: "1.5px",
+            fontSize: "11px",
+            letterSpacing: "1px",
             color: "text.secondary",
+            whiteSpace: "nowrap",
           }}
         >
-          SEEDS
-        </Typography>
-        <Typography
-          sx={{
-            fontFamily: "var(--font-heading)",
-            fontSize: "22px",
-            color: "text.primary",
-          }}
-        >
-          {item.items?.length ?? 0}
+          {item.items?.length ?? 0} SEEDS
+          {item.stats?.playCount ? (
+            <Box
+              component="span"
+              sx={{ color: "var(--primary)" }}
+            >
+              {" "}
+              · {item.stats.playCount}
+              {item.stats.playCount === 1 ? " PLAY" : " PLAYS"}
+            </Box>
+          ) : null}
         </Typography>
       </Box>
 
       <Box
         role="button"
+        tabIndex={0}
         aria-label={`Play ${item.title}`}
         onClick={() => onPlayItem(item)}
+        onKeyDown={onActivateKeyDown(() => onPlayItem(item))}
         sx={{
+          ...focusableButtonSx,
           cursor: "pointer",
           width: "50px",
           flexShrink: 0,
-          backgroundColor: "var(--accent)",
+          backgroundColor: "var(--primary)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

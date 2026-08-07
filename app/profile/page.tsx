@@ -9,6 +9,7 @@ import {
   Typography,
   Divider,
 } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import { useUser } from "../user-provider";
 import BracketCard from "../components/bracket-card";
 
@@ -27,6 +28,32 @@ export default function Profile() {
   const [joinError, setJoinError] = useState("");
   const [myBrackets, setMyBrackets] = useState<Item[]>([]);
   const [myBracketsLoading, setMyBracketsLoading] = useState(true);
+  const [profileStats, setProfileStats] = useState<{
+    gamesHosted: number;
+    gamesPlayed: number;
+    favoriteItem: { title: string; count: number } | null;
+    pickAccuracy: number | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    async function fetchProfileStats() {
+      try {
+        const res = await fetch("/api/profile/stats");
+        if (!res.ok) {
+          return;
+        }
+        setProfileStats(await res.json());
+      } catch (err) {
+        console.error("Error fetching profile stats:", err);
+      }
+    }
+
+    fetchProfileStats();
+  }, [user]);
 
   useEffect(() => {
     async function fetchBrackets() {
@@ -76,6 +103,9 @@ export default function Profile() {
           padding: "8px",
         }}
       >
+        <Typography component="h1" sx={visuallyHidden}>
+          Profile
+        </Typography>
         {!user && (
           <Stack direction="row" spacing={2}>
             <Button
@@ -108,7 +138,38 @@ export default function Profile() {
               useFlexGap
               sx={{ flexWrap: "wrap", width: "100%" }}
             >
-              <Typography variant="h6">My Brackets</Typography>
+              {profileStats ? (
+                <>
+                  <Typography variant="h6" component="h2">
+                    Your Stats
+                  </Typography>
+                  <Stack direction="row" spacing={2} sx={{ flexWrap: "wrap" }}>
+                    <Typography sx={{ fontSize: "14px", color: "text.secondary" }}>
+                      Hosted {profileStats.gamesHosted}
+                    </Typography>
+                    <Typography sx={{ fontSize: "14px", color: "text.secondary" }}>
+                      Played {profileStats.gamesPlayed}
+                    </Typography>
+                    {profileStats.favoriteItem ? (
+                      <Typography sx={{ fontSize: "14px", color: "text.secondary" }}>
+                        Favorite: {profileStats.favoriteItem.title} (
+                        {profileStats.favoriteItem.count}×)
+                      </Typography>
+                    ) : null}
+                    {profileStats.pickAccuracy !== null ? (
+                      <Typography sx={{ fontSize: "14px", color: "text.secondary" }}>
+                        Pick accuracy: {Math.round(profileStats.pickAccuracy * 100)}%
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                  <Divider
+                    sx={{ bgcolor: (theme) => theme.palette.secondary.main }}
+                  />
+                </>
+              ) : null}
+              <Typography variant="h6" component="h2">
+                My Brackets
+              </Typography>
               <Divider
                 sx={{ bgcolor: (theme) => theme.palette.secondary.main }}
               />

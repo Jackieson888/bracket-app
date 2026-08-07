@@ -123,6 +123,176 @@ function persistRoomSnapshot(slug, room, options = {}) {
   });
 }
 
+let gameResultsIndexesEnsured = false;
+
+async function ensureGameResultsIndexes(gameResults) {
+  if (gameResultsIndexesEnsured) {
+    return;
+  }
+
+  gameResultsIndexesEnsured = true;
+
+  try {
+    await gameResults.createIndex({ bracketId: 1 });
+    await gameResults.createIndex({ hostUserId: 1 });
+    await gameResults.createIndex({ participantUserIds: 1 });
+  } catch (error) {
+    console.error("Failed to ensure gameResults indexes:", error);
+  }
+}
+
+async function withGameResultsCollection(callback) {
+  const clientPromise = getMongoClientPromise();
+  if (!clientPromise) {
+    return null;
+  }
+
+  const client = await clientPromise;
+  const db = client.db("test");
+  const gameResults = db.collection("gameResults");
+  await ensureGameResultsIndexes(gameResults);
+  return callback(gameResults);
+}
+
+function buildItemResults(matchHistory, winnerItemId) {
+  const stats = new Map();
+
+  matchHistory.forEach((entry) => {
+    (entry.items ?? []).forEach((item) => {
+      if (!item?.id) {
+        return;
+      }
+
+      if (!stats.has(item.id)) {
+        stats.set(item.id, {
+          itemId: item.id,
+          title: item.title ?? item.id,
+          wins: 0,
+          losses: 0,
+          roundReached: entry.round,
+        });
+      }
+
+      const stat = stats.get(item.id);
+      stat.roundReached = Math.max(stat.roundReached, entry.round);
+
+      if (item.id === entry.winnerItemId) {
+        stat.wins += 1;
+      } else {
+        stat.losses += 1;
+      }
+    });
+  });
+
+  return Array.from(stats.values()).map((stat) => ({
+    ...stat,
+    isWinner: stat.itemId === winnerItemId,
+  }));
+}
+
+// Records a durable, non-expiring summary of a completed game into
+// `gameResults`, since `sessions` documents are TTL-deleted ~30 minutes
+// after creation (see SESSION_TTL_MS) regardless of whether the game
+// finished. Guarded by room.historyRecorded so "Play Again" (which
+// re-runs the same slug through another full game) produces one
+// gameResults doc per completed game rather than duplicates.
+async function recordGameHistoryIfNeeded(slug, room) {
+  if (room.roomStatus !== "completed" || room.historyRecorded) {
+    return;
+  }
+
+  room.historyRecorded = true;
+
+  const matchHistory = room.gameState?.matchHistory ?? [];
+  const winner = room.gameState?.winner ?? null;
+
+  if (!winner?.id) {
+    return;
+  }
+
+  try {
+    const sessionInfo = await withSessionsCollection((sessions) =>
+      sessions.findOne(
+        { slug },
+        {
+          projection: {
+            participantLookup: 1,
+            hostUserId: 1,
+            bracket: 1,
+          },
+        },
+      ),
+    );
+
+    const participantLookup = sessionInfo?.participantLookup ?? {};
+    const resolveAuthUserId = (participantId) =>
+      participantLookup?.[participantId]?.authUserId ?? null;
+
+    const hostUserId =
+      resolveAuthUserId(room.hostParticipantId) ??
+      sessionInfo?.hostUserId ??
+      null;
+
+    const participantUserIdSet = new Set();
+    let guestParticipantCount = 0;
+
+    Array.from(room.participantIds || []).forEach((participantId) => {
+      const authUserId = resolveAuthUserId(participantId);
+      if (authUserId) {
+        participantUserIdSet.add(authUserId);
+      } else {
+        guestParticipantCount += 1;
+      }
+    });
+
+    // Only logged-in participants' picks are retained here — anonymous
+    // guest participantIds are never written into this durable collection,
+    // even though they're already present in the ephemeral `sessions` doc.
+    const participantPicks = [];
+    matchHistory.forEach((entry) => {
+      (entry.votes ?? []).forEach((vote) => {
+        const authUserId = resolveAuthUserId(vote.participantId);
+        if (!authUserId) {
+          return;
+        }
+
+        participantPicks.push({
+          authUserId,
+          round: entry.round,
+          match: entry.match,
+          pickedItemId: vote.itemId,
+          wasMatchWinner: vote.itemId === entry.winnerItemId,
+        });
+      });
+    });
+
+    const doc = {
+      slug,
+      bracketId: sessionInfo?.bracket?._id
+        ? String(sessionInfo.bracket._id)
+        : null,
+      bracketTitle: sessionInfo?.bracket?.title ?? null,
+      hostUserId,
+      participantUserIds: Array.from(participantUserIdSet),
+      guestParticipantCount,
+      winnerItemId: winner.id,
+      winnerItemTitle: winner.title ?? null,
+      itemResults: buildItemResults(matchHistory, winner.id),
+      matchLog: matchHistory.map(({ votes: _votes, ...rest }) => rest),
+      participantPicks,
+      roundCount: (room.gameState?.round ?? 0) + 1,
+      startedAt: room.gameStartedAt ?? room.createdAt ?? new Date(),
+      completedAt: new Date(),
+    };
+
+    await withGameResultsCollection((gameResults) =>
+      gameResults.insertOne(doc),
+    );
+  } catch (error) {
+    console.error("Failed to record game history:", error);
+  }
+}
+
 function scheduleRoomCleanup(slug) {
   if (roomCleanupTimers.has(slug)) {
     return;
@@ -287,7 +457,9 @@ async function getOrCreateRoom(slug) {
         pendingVoteCount: 0,
         roundWinners: [],
         winner: null,
+        matchHistory: [],
       },
+      historyRecorded: false,
     };
 
     if (isRoomExpired(room)) {
@@ -402,6 +574,19 @@ function normalizeBracketProgression(room) {
       advanced = true;
       const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
       nextRoundWinners[match] = matchItems[0];
+
+      room.gameState.matchHistory = [
+        ...(room.gameState.matchHistory ?? []),
+        {
+          round,
+          match,
+          items: [{ id: matchItems[0].id, title: matchItems[0].title }],
+          voteCounts: {},
+          votes: [],
+          winnerItemId: matchItems[0].id,
+          wasBye: true,
+        },
+      ];
 
       const totalMatches = Math.ceil(currentRoundItems.length / matchSize);
       const completedMatches = nextRoundWinners.filter(Boolean).length;
@@ -721,9 +906,15 @@ function attachWsRuntime(server, options = {}) {
             requiredVoteCount: 0,
             roundWinners: [],
             winner: null,
+            matchHistory: [],
           };
+          // Reset per-game bookkeeping so "Play Again" on the same room
+          // slug records a fresh, separate gameResults doc for this run.
+          room.historyRecorded = false;
+          room.gameStartedAt = new Date();
           normalizeBracketProgression(room);
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
+          void recordGameHistoryIfNeeded(slug, room);
           broadcastGameUpdate(slug, {
             type: "game-started",
             roomStatus: room.roomStatus,
@@ -805,6 +996,40 @@ function attachWsRuntime(server, options = {}) {
             const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
             nextRoundWinners[match] = winnerItem;
 
+            const pickedItemFor = (vote) =>
+              right && vote?.choice === startIndex + 1 ? right : left;
+            const voteCounts = {};
+            const matchHistoryVotes = [];
+            Object.entries(matchVotes).forEach(([voterId, vote]) => {
+              const pickedItem = pickedItemFor(vote);
+              if (!pickedItem?.id) {
+                return;
+              }
+              voteCounts[pickedItem.id] = (voteCounts[pickedItem.id] ?? 0) + 1;
+              matchHistoryVotes.push({
+                participantId: voterId,
+                itemId: pickedItem.id,
+              });
+            });
+
+            room.gameState.matchHistory = [
+              ...(room.gameState.matchHistory ?? []),
+              {
+                round,
+                match,
+                items: right
+                  ? [
+                      { id: left.id, title: left.title },
+                      { id: right.id, title: right.title },
+                    ]
+                  : [{ id: left.id, title: left.title }],
+                voteCounts,
+                votes: matchHistoryVotes,
+                winnerItemId: winnerItem.id,
+                wasBye: false,
+              },
+            ];
+
             const totalMatches = Math.ceil(
               currentRoundItems.length / matchSize,
             );
@@ -858,6 +1083,7 @@ function attachWsRuntime(server, options = {}) {
             gameState: room.gameState,
           });
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
+          void recordGameHistoryIfNeeded(slug, room);
         }
 
       } catch (error) {

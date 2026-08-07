@@ -17,3 +17,29 @@ export function toPublicUser(user: AuthUser): PublicUser {
     picture: user.picture ?? null,
   };
 }
+
+export type ParticipantRecord = {
+  participantId: string;
+  displayName?: string;
+  authUserId?: string | null;
+  joinedAt?: Date | string | number;
+  lastSeenAt?: Date | string | number;
+};
+
+export type PublicParticipant = {
+  participantId: string;
+  displayName?: string;
+  joinedAt?: Date | string | number;
+};
+
+// Strips authUserId (Auth0 sub) and lastSeenAt before a participant record
+// leaves the server — authUserId must never reach other players in a room.
+export function toPublicParticipant(
+  participant: ParticipantRecord,
+): PublicParticipant {
+  return {
+    participantId: participant.participantId,
+    displayName: participant.displayName,
+    joinedAt: participant.joinedAt,
+  };
+}

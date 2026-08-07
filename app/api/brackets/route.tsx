@@ -1,6 +1,7 @@
 import clientPromise from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
 import { toPublicUser } from "@/lib/user";
+import { summarizeGameResults, type GameResultDoc } from "@/lib/game-results";
 
 const MAX_BRACKETS_RETURNED = 5;
 
@@ -49,12 +50,40 @@ export async function GET(req: Request) {
       .limit(MAX_BRACKETS_RETURNED)
       .toArray();
 
-    const sanitized = results.map((bracket) => ({
-      ...bracket,
-      user: toPublicUser(
-        bracket.user && !bracket.user.guest ? bracket.user : null,
-      ),
-    }));
+    const bracketIds = results.map((bracket) => String(bracket._id));
+    const statsByBracketId = new Map<string, GameResultDoc[]>();
+
+    if (bracketIds.length > 0) {
+      const gameResults = db.collection("gameResults");
+      const statsDocs = (await gameResults
+        .find({ bracketId: { $in: bracketIds } })
+        .toArray()) as unknown as GameResultDoc[];
+
+      for (const doc of statsDocs) {
+        if (!doc.bracketId) continue;
+        const existing = statsByBracketId.get(doc.bracketId) ?? [];
+        existing.push(doc);
+        statsByBracketId.set(doc.bracketId, existing);
+      }
+    }
+
+    const sanitized = results.map((bracket) => {
+      const docs = statsByBracketId.get(String(bracket._id));
+      const summary = docs ? summarizeGameResults(docs) : null;
+
+      return {
+        ...bracket,
+        user: toPublicUser(
+          bracket.user && !bracket.user.guest ? bracket.user : null,
+        ),
+        stats: summary
+          ? {
+              playCount: summary.totalPlays,
+              topItemTitle: summary.itemStats[0]?.title ?? null,
+            }
+          : undefined,
+      };
+    });
 
     return Response.json({ success: true, brackets: sanitized });
   } catch (err) {

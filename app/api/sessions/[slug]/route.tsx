@@ -1,5 +1,6 @@
 import clientPromise from "@/lib/mongodb";
-import { toPublicUser } from "@/lib/user";
+import { toPublicUser, toPublicParticipant, type ParticipantRecord } from "@/lib/user";
+import { auth0 } from "@/lib/auth0";
 
 import { NextRequest } from "next/server";
 import { randomUUID } from "crypto";
@@ -66,7 +67,18 @@ export async function GET(
           }
         : safeResult.bracket;
 
-    return Response.json({ ...safeResult, bracket });
+    const participantLookup = safeResult.participantLookup
+      ? Object.fromEntries(
+          Object.entries(
+            safeResult.participantLookup as Record<string, ParticipantRecord>,
+          ).map(([participantId, entry]) => [
+            participantId,
+            toPublicParticipant(entry),
+          ]),
+        )
+      : safeResult.participantLookup;
+
+    return Response.json({ ...safeResult, bracket, participantLookup });
   } catch (err) {
     console.error("Error getting session:", err);
     return Response.json({ error: "Failed to fetch session" }, { status: 500 });
@@ -80,6 +92,8 @@ export async function POST(
   try {
     const body = await req.json().catch(() => ({}));
     const { slug } = await params;
+    const authSession = await auth0.getSession();
+    const authUserId = authSession?.user?.sub ?? null;
 
     const participantId =
       typeof body.participantId === "string" && body.participantId.trim()
@@ -138,6 +152,7 @@ export async function POST(
           [`participantLookup.${participantId}`]: {
             participantId,
             displayName,
+            authUserId,
             lastSeenAt: now,
           },
         },
@@ -172,7 +187,9 @@ export async function POST(
       { projection: { participantLookup: 1, slug: 1, _id: 1 } },
     );
 
-    const participants = Object.values(updated?.participantLookup ?? {});
+    const participants = Object.values(
+      (updated?.participantLookup ?? {}) as Record<string, ParticipantRecord>,
+    ).map(toPublicParticipant);
 
     return Response.json({
       slug,

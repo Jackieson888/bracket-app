@@ -8,6 +8,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Image from "next/image";
 import { swatchForIndex } from "@/lib/avatar";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
 interface item {
   title: string;
@@ -194,7 +195,7 @@ export default function BracketItemCard({
         sx={{
           width: "50px",
           flexShrink: 0,
-          backgroundColor: "var(--accent)",
+          backgroundColor: "var(--primary)",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -204,12 +205,15 @@ export default function BracketItemCard({
       >
         <Box
           role="button"
+          tabIndex={0}
           aria-label="Edit title"
           onClick={() => onToggleEdit(index)}
+          onKeyDown={onActivateKeyDown(() => onToggleEdit(index))}
           sx={{
+            ...focusableButtonSx,
             cursor: "pointer",
-            width: "28px",
-            height: "28px",
+            width: "40px",
+            height: "40px",
             borderRadius: "8px",
             display: "flex",
             alignItems: "center",
@@ -217,7 +221,12 @@ export default function BracketItemCard({
           }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-            <path d="M12 20h9" stroke="var(--card)" strokeWidth="2.2" strokeLinecap="round" />
+            <path
+              d="M12 20h9"
+              stroke="var(--card)"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
             <path
               d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"
               stroke="var(--card)"
@@ -228,12 +237,15 @@ export default function BracketItemCard({
         </Box>
         <Box
           role="button"
+          tabIndex={0}
           aria-label="Delete item"
           onClick={() => onDeleteItem(index)}
+          onKeyDown={onActivateKeyDown(() => onDeleteItem(index))}
           sx={{
+            ...focusableButtonSx,
             cursor: "pointer",
-            width: "28px",
-            height: "28px",
+            width: "40px",
+            height: "40px",
             borderRadius: "8px",
             display: "flex",
             alignItems: "center",

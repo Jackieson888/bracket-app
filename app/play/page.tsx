@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { Container, Box, Typography } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import BracketCard from "../components/bracket-card";
 import PillLabel from "../components/pill-label";
+import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
 interface Item {
   _id: string;
@@ -132,6 +134,9 @@ export default function Play() {
           padding: "22px 18px",
         }}
       >
+        <Typography component="h1" sx={visuallyHidden}>
+          Play
+        </Typography>
         <Box
           component="form"
           className="bracket-pop-in"
@@ -165,11 +170,16 @@ export default function Play() {
                 }
               }}
               placeholder="Room Code"
+              aria-label="Room code"
               sx={{
                 width: "100%",
                 background: "transparent",
                 border: "none",
-                outline: "none",
+                outline: "2px solid transparent",
+                outlineOffset: "2px",
+                "&:focus-visible": {
+                  outline: "2px solid var(--primary)",
+                },
                 borderBottom: "2px solid rgba(var(--primary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-heading)",
@@ -179,11 +189,6 @@ export default function Play() {
                 textTransform: "uppercase",
               }}
             />
-            <Typography
-              sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "text.secondary" }}
-            >
-              Room codes are uppercase letters.
-            </Typography>
             {joinError ? (
               <Typography
                 sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--primary)" }}
@@ -193,8 +198,11 @@ export default function Play() {
             ) : null}
             <Box
               role="button"
+              tabIndex={0}
               onClick={() => void handleSubmit()}
+              onKeyDown={onActivateKeyDown(() => void handleSubmit())}
               sx={{
+                ...focusableButtonSx,
                 cursor: joinLoading ? "default" : "pointer",
                 opacity: joinLoading ? 0.6 : 1,
                 marginTop: "6px",
@@ -267,11 +275,16 @@ export default function Play() {
                 setSearchQuery(e.target.value)
               }
               placeholder="Search Brackets"
+              aria-label="Search brackets"
               sx={{
                 width: "100%",
                 background: "transparent",
                 border: "none",
-                outline: "none",
+                outline: "2px solid transparent",
+                outlineOffset: "2px",
+                "&:focus-visible": {
+                  outline: "2px solid var(--primary)",
+                },
                 borderBottom: "2px solid rgba(var(--tertiary-rgb),0.4)",
                 paddingBottom: "8px",
                 fontFamily: "var(--font-body)",
@@ -279,11 +292,6 @@ export default function Play() {
                 color: "text.primary",
               }}
             />
-            <Typography
-              sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "text.secondary" }}
-            >
-              Search brackets by title.
-            </Typography>
             {searchError ? (
               <Typography
                 sx={{ fontFamily: "var(--font-body)", fontSize: "12px", color: "var(--primary)" }}
@@ -293,8 +301,11 @@ export default function Play() {
             ) : null}
             <Box
               role="button"
+              tabIndex={0}
               onClick={() => void handleSearch()}
+              onKeyDown={onActivateKeyDown(() => void handleSearch())}
               sx={{
+                ...focusableButtonSx,
                 cursor: searchLoading ? "default" : "pointer",
                 opacity: searchLoading ? 0.6 : 1,
                 marginTop: "6px",
