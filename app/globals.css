@@ -78,6 +78,59 @@ samp {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* The board is the game: everything around the two contenders is chrome, so
+   the shell is a fixed-height column and the cards take every pixel the
+   header and status rows do not need. dvh rather than vh so mobile browser
+   toolbars do not push the media off-screen. */
+.bracket-shell--game {
+  /* app/layout.tsx reserves 72px at the bottom for the fixed BottomNav; the
+     rest is breathing room so the board is not flush against the edges. */
+  height: calc(100dvh - var(--bottom-nav-clearance, 72px) - 24px);
+  max-height: calc(100dvh - var(--bottom-nav-clearance, 72px) - 24px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bracket-shell--game .bracket-round-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.bracket-shell--game .bracket-round-item {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+}
+
+/* Chain the height down through MUI's Card and CardActionArea so the media
+   box below can actually grow; without min-height:0 at each level the flex
+   items refuse to shrink and the card overflows instead. */
+.bracket-shell--game .bracket-round-item__card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.bracket-shell--game .bracket-round-item__card .MuiCardActionArea-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.bracket-shell--game .bracket-item-media {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 84px;
+}
+
+/* Title + voter chips keep their natural height; only the media flexes. */
+.bracket-shell--game .bracket-round-item__card .MuiCardActionArea-root > *:last-child {
+  flex: 0 0 auto;
+}
+
 .bracket-live-dot {
   width: 7px;
   height: 7px;
@@ -170,9 +223,37 @@ samp {
   width: 100%;
 }
 
+.bracket-round-panel {
+  --bracket-card-gap: clamp(14px, 3vh, 22px);
+  gap: var(--bracket-card-gap);
+}
+
+/* Sits between the two cards in normal flow and is pulled back into the gap,
+   so it lands on the real boundary no matter how tall each card renders.
+   Half the badge plus half the gap on each side nets back to one gap. */
+.bracket-vs-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  z-index: 3;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background-color: var(--tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-block: calc(-1 * (26px + var(--bracket-card-gap) / 2));
+}
+
+.bracket-vs-label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--card);
+}
+
 .bracket-item-media {
   position: relative;
-  height: 150px;
+  height: clamp(112px, 21vh, 190px);
   overflow: hidden;
   background: repeating-linear-gradient(
     45deg,
@@ -207,14 +288,20 @@ samp {
 
 /* Intro overlay */
 
+/* The overlay is a column: stage takes the free space, the skip button keeps
+   its own row. Nothing is absolutely positioned, so nothing can be pushed off
+   the bottom of the viewport. */
 .bracket-intro-overlay {
   position: fixed;
   inset: 0;
   z-index: 40;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  gap: clamp(8px, 1.5vh, 16px);
+  padding: clamp(10px, 2.5vw, 24px);
+  overflow: hidden;
   background: rgba(var(--background-rgb), 0.94);
   backdrop-filter: blur(8px);
   animation: fadeIn 150ms ease-out both;
@@ -222,48 +309,203 @@ samp {
 
 .bracket-intro-stage {
   width: min(100%, 1100px);
+  flex: 1 1 auto;
+  /* min-height:0 has to run the whole chain down to the media, or a flex item
+     refuses to shrink below its content and the second card overflows. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: clamp(6px, 1.2vh, 18px);
 }
 
+/* Cards share whatever height is left, so one fills the stage and two split
+   it - no viewport-relative guessing. The card currently being introduced
+   keeps its full share; the one that already had its turn drops back to a
+   strip so the new contender is the thing you are looking at. */
 .bracket-intro-card {
-  width: min(100%, 880px);
+  width: min(100%, 980px);
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
   align-self: center;
+  transition:
+    max-height 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    flex-grow 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bracket-intro-card[data-minimized="true"] {
+  flex-grow: 0;
+  max-height: 22%;
+}
+
+.bracket-intro-card[data-minimized="true"] .bracket-intro-card-title {
+  font-size: clamp(12px, 2vw, 15px);
 }
 
 .bracket-intro-card--card1 {
-  width: min(100%, 980px);
   animation: cardPopLeft 220ms ease-out both;
 }
 
-.bracket-intro-card--card1 .MuiCard-root,
-.bracket-intro-card--card2 .MuiCard-root {
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-}
-
 .bracket-intro-card--card2 {
-  width: min(100%, 820px);
   animation: cardPopRight 220ms ease-out both;
 }
 
-.bracket-intro-card img {
+.bracket-intro-card-inner {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(4px, 1vh, 10px);
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--card-elevated);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  padding-bottom: clamp(6px, 1.2vh, 12px);
+}
+
+.bracket-intro-media-frame {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Applies to both the <video> clip and the <Image> still. Bounded by the
+   frame it sits in rather than by the viewport, which is what stops the
+   second clip being cut off at the bottom. */
+.bracket-intro-media {
   display: block;
   width: auto !important;
-  max-width: 100% !important;
-  max-height: min(72vh, 760px) !important;
   height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   object-fit: contain;
 }
 
+.bracket-intro-card-title {
+  flex: 0 0 auto;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: clamp(15px, 2.6vw, 22px);
+  letter-spacing: 0.5px;
+  text-align: center;
+  color: var(--foreground);
+  padding: 0 14px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bracket-intro-unmute {
+  border: none;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+}
+
+.bracket-intro-skip {
+  flex: 0 0 auto;
+  padding: 10px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--sub);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.bracket-intro-skip:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
 .bracket-intro-vs {
+  flex: 0 0 auto;
+  width: clamp(40px, 9vw, 52px);
+  height: clamp(40px, 9vw, 52px);
+  border-radius: 50%;
+  background-color: var(--tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   animation: vsPop 180ms ease-out both;
 }
 
 .bracket-intro-overlay .bracket-round-item__card {
   width: 100%;
+}
+
+/* Marks a video contender on the still board card and create-page thumbnail. */
+.bracket-play-badge {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  pointer-events: none;
+}
+
+/* Interactive twin of the badge: opens the media modal. Lives outside the
+   card's action area so it can be a real, focusable button. */
+.bracket-media-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.bracket-media-button:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+.bracket-play-badge--small {
+  right: 3px;
+  bottom: 3px;
+  width: 20px;
+  height: 20px;
 }
 
 /* Winner overlay */
@@ -272,7 +514,8 @@ samp {
   position: fixed;
   inset: 0;
   z-index: 50;
-  overflow: hidden;
+  overflow-y: auto;
+  padding: clamp(12px, 4vw, 24px);
   background: var(--background);
   display: flex;
   flex-direction: column;
@@ -686,6 +929,10 @@ samp {
   .bracket-round-item--winner,
   .bracket-vs-badge,
   .bracket-voter-avatar,
+  .bracket-intro-card {
+    transition: none !important;
+  }
+
   .bracket-intro-overlay,
   .bracket-intro-card--card1,
   .bracket-intro-card--card2,
@@ -700,12 +947,270 @@ samp {
   }
 }
 
-@media (max-width: 640px) {
-  .bracket-intro-overlay {
-    padding: 14px;
+/* Landscape phones: stacking two clips in ~400px of height leaves nothing
+   readable, so the matchup goes side by side and the cards split the width
+   instead of the height. */
+@media (orientation: landscape) and (max-height: 620px) {
+  .bracket-intro-stage {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: center;
   }
 
-  .bracket-intro-stage {
-    gap: 14px;
+  .bracket-intro-card {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* Row layout: the finished card gives up width, not height. */
+  .bracket-intro-card[data-minimized="true"] {
+    max-height: none;
+    max-width: 26%;
+  }
+
+  .bracket-intro-card-title {
+    font-size: clamp(12px, 1.8vw, 16px);
+  }
+
+  .bracket-intro-skip {
+    padding: 6px 14px;
+  }
+}
+
+/* Very short viewports: give the media every pixel that is not load-bearing. */
+@media (max-height: 480px) {
+  .bracket-intro-card-inner {
+    border-width: 1px;
+    padding-bottom: 4px;
+  }
+
+  .bracket-intro-card-title {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 400px) {
+  .bracket-join-panel {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .bracket-reveal-title {
+    font-size: 15px;
+  }
+}
+
+/* Vote countdown */
+.bracket-timer {
+  position: relative;
+  width: min(100%, 260px);
+  max-width: 100%;
+  flex-shrink: 0;
+  height: 22px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bracket-timer-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--tertiary);
+  opacity: 0.35;
+  transition: width 500ms linear;
+}
+
+.bracket-timer[data-urgent="true"] .bracket-timer-fill {
+  background: var(--primary);
+  opacity: 0.55;
+}
+
+.bracket-timer-value {
+  position: relative;
+  font-family: var(--font-mono-ui), monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.bracket-force-advance {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--sub);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.bracket-force-advance:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+/* Result reveal shown at the head of the next matchup */
+.bracket-reveal {
+  width: min(100%, 520px);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeIn 200ms ease-out both;
+}
+
+.bracket-reveal-label {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--sub);
+  text-align: center;
+}
+
+.bracket-reveal-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--card-elevated);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.bracket-reveal-row[data-won="true"] {
+  border-color: var(--primary);
+}
+
+.bracket-reveal-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--primary);
+  opacity: 0.22;
+  transition: width 600ms cubic-bezier(0.18, 1, 0.32, 1);
+}
+
+.bracket-reveal-title,
+.bracket-reveal-count {
+  position: relative;
+  font-family: var(--font-body);
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.bracket-reveal-title {
+  font-size: clamp(14px, 4vw, 17px);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bracket-reveal-count {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Lobby join panel */
+.bracket-join-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--card-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bracket-join-qr {
+  width: clamp(120px, 34vw, 156px);
+  height: clamp(120px, 34vw, 156px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  padding: 6px;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.bracket-join-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.bracket-join-detail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.bracket-join-label {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--sub);
+}
+
+.bracket-join-code {
+  font-family: var(--font-mono-ui), monospace;
+  font-size: clamp(28px, 9vw, 42px);
+  line-height: 1;
+  letter-spacing: 8px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.bracket-join-link {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--sub);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.bracket-join-link:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+@media (max-width: 520px) {
+  .bracket-join-code {
+    letter-spacing: 6px;
+  }
+}
+
+/* On short screens the round heading and status text are the first things to
+   give up space - the contenders are what people are actually looking at. */
+@media (max-height: 620px) {
+  .bracket-shell--game {
+    height: calc(100dvh - var(--bottom-nav-clearance, 72px) - 8px);
+    max-height: calc(100dvh - var(--bottom-nav-clearance, 72px) - 8px);
+    border-radius: 18px;
+  }
+
+  .bracket-shell--game .bracket-item-media {
+    min-height: 64px;
   }
 }

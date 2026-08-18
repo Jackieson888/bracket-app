@@ -5,6 +5,8 @@ import { useState, type CSSProperties } from "react";
 import { Box, Card, CardActionArea, Typography } from "@mui/material";
 import MediaModal from "./media-modal";
 import Image from "next/image";
+import { isVideoItem, previewImageUrl } from "@/lib/media";
+import AvatarGlyph from "./avatar-glyph";
 
 type Item = {
   id?: string;
@@ -12,11 +14,13 @@ type Item = {
   title: string;
   width?: number;
   height?: number;
+  mediaType?: "image" | "video";
+  duration?: number | null;
 };
 
 export type Voter = {
   id: string;
-  initials: string;
+  initials: string | null;
   color: string;
 };
 
@@ -44,6 +48,10 @@ export default function GameItemCard({
   style,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const isVideo = isVideoItem(item);
+  // Videos show their Cloudinary poster frame here; the clip itself plays in
+  // the pre-vote intro and in the modal, so the board stays quiet.
+  const previewUrl = previewImageUrl(item);
 
   return (
     <>
@@ -51,6 +59,7 @@ export default function GameItemCard({
         className={className}
         style={style}
         sx={{
+          position: "relative",
           borderRadius: "20px",
           border: "2px solid",
           borderColor: accentColor ?? "rgba(255,255,255,0.08)",
@@ -58,19 +67,42 @@ export default function GameItemCard({
           transform: accentColor ? "scale(1.015)" : "scale(1)",
         }}
       >
-        <CardActionArea onClick={() => handleVote({ item, index })}>
+        {/* Sibling of the action area, not a child: CardActionArea renders a
+            <button>, so a nested interactive control would be invalid markup
+            and unreachable by keyboard. */}
+        {item.url ? (
           <Box
-            className="bracket-item-media"
+            component="button"
+            type="button"
+            className="bracket-media-button"
+            aria-label={`${isVideo ? "Play clip" : "View image"} for ${item.title}`}
             onClick={(event) => {
-              if (item.url) {
-                event.stopPropagation();
-                setOpen(true);
-              }
+              event.stopPropagation();
+              setOpen(true);
             }}
           >
-            {item.url ? (
+            {isVideo ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M8 5.5v13l11-6.5-11-6.5Z" fill="currentColor" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </Box>
+        ) : null}
+        <CardActionArea onClick={() => handleVote({ item, index })}>
+          <Box className="bracket-item-media">
+            {previewUrl ? (
               <Image
-                src={item.url}
+                src={previewUrl}
                 alt={item.title}
                 fill
                 sizes="(max-width: 640px) 100vw, 480px"
@@ -106,7 +138,7 @@ export default function GameItemCard({
                     className="bracket-voter-avatar"
                     sx={{ backgroundColor: voter.color }}
                   >
-                    {voter.initials}
+                    <AvatarGlyph initials={voter.initials} size={13} />
                   </Box>
                 ))}
                 {extraVoterCount > 0 ? (

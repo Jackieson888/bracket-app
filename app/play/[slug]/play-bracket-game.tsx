@@ -6,6 +6,7 @@ import BracketGame from "@/app/components/bracket-game";
 import PillLabel from "@/app/components/pill-label";
 import { useUser } from "@/app/user-provider";
 import { initialsFor, swatchForIndex } from "@/lib/avatar";
+import AvatarGlyph from "@/app/components/avatar-glyph";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 import { CheckCircle, ContentCopy } from "@mui/icons-material";
 
@@ -61,9 +62,17 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const [joinLoading, setJoinLoading] = useState(false);
   const [startLoading, setStartLoading] = useState(false);
   const [roomCopied, setRoomCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const reconnectAttemptRef = useRef(0);
   const reconnectAllowedRef = useRef(true);
   const participantStorageKey = `tvt-participant-id:${slug}`;
+  const tokenStorageKey = `tvt-participant-token:${slug}`;
+  // Credential for this player slot, returned by the join endpoint. Kept in a
+  // ref so the socket "open" handler always reads the latest value.
+  const participantTokenRef = useRef<string | null>(null);
+  // The socket can be OPEN but not yet verified, and the server drops votes
+  // from an unauthenticated socket. Votes are queued until auth-ok lands.
+  const socketAuthenticatedRef = useRef(false);
 
   useEffect(() => {
     setParticipantId("");
@@ -107,6 +116,33 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     return created;
   };
 
+  const readStoredToken = () => {
+    if (participantTokenRef.current) {
+      return participantTokenRef.current;
+    }
+    try {
+      const stored =
+        window.sessionStorage.getItem(tokenStorageKey) ??
+        window.localStorage.getItem(tokenStorageKey);
+      participantTokenRef.current = stored;
+      return stored;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredToken = (value: string) => {
+    try {
+      window.sessionStorage.setItem(tokenStorageKey, value);
+    } catch {
+      try {
+        window.localStorage.setItem(tokenStorageKey, value);
+      } catch {
+        // In-memory ref still carries it for this tab.
+      }
+    }
+  };
+
   const persistJoin = async (name: string) => {
     const resolvedName = name.trim() || "Guest";
     const resolvedParticipantId = resolveParticipantId();
@@ -119,11 +155,18 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       body: JSON.stringify({
         participantId: resolvedParticipantId,
         displayName: resolvedName,
+        participantToken: readStoredToken(),
       }),
     });
 
     if (!response.ok) {
       throw new Error("Unable to persist player identity for this room");
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (payload?.participantToken) {
+      participantTokenRef.current = payload.participantToken;
+      writeStoredToken(payload.participantToken);
     }
 
     return resolvedParticipantId;
@@ -325,6 +368,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
         setConnected(true);
         setConnectionError("");
+        socketAuthenticatedRef.current = false;
 
         nextSocket.send(
           JSON.stringify({
@@ -335,32 +379,30 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           }),
         );
 
-        void persistJoin(resolvedName).catch((error) => {
-          console.error("Failed to persist room join:", error);
-          setConnectionError("Connected, but could not save your player name.");
-        });
+        // The socket cannot vote or start the game until it presents the
+        // credential from the join endpoint, so register first and only then
+        // authenticate this connection.
+        void persistJoin(resolvedName)
+          .then(() => {
+            const token = participantTokenRef.current;
+            if (!token || nextSocket.readyState !== WebSocket.OPEN) {
+              return;
+            }
 
-        setPendingVotes((current) => {
-          if (current.length === 0) {
-            return current;
-          }
+            nextSocket.send(
+              JSON.stringify({
+                type: "auth",
+                participantId: resolvedParticipantId,
+                participantToken: token,
+              }),
+            );
+          })
+          .catch((error) => {
+            console.error("Failed to persist room join:", error);
+            setConnectionError("Connected, but could not save your player name.");
+          });
 
-          const queuedVotes = [...current];
-          setTimeout(() => {
-            queuedVotes.forEach((vote) => {
-              nextSocket.send(
-                JSON.stringify({
-                  type: "vote",
-                  slug,
-                  playerId: resolvedParticipantId,
-                  ...vote,
-                }),
-              );
-            });
-          }, 0);
 
-          return [];
-        });
       });
 
       nextSocket.addEventListener("message", (event) => {
@@ -369,6 +411,39 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             typeof event.data === "string"
               ? JSON.parse(event.data)
               : JSON.parse(String(event.data));
+
+          if (payload?.type === "auth-ok") {
+            socketAuthenticatedRef.current = true;
+            setConnectionError("");
+            setPendingVotes((current) => {
+              if (current.length === 0) {
+                return current;
+              }
+
+              const queuedVotes = [...current];
+              setTimeout(() => {
+                queuedVotes.forEach((vote) => {
+                  nextSocket.send(
+                    JSON.stringify({
+                      type: "vote",
+                      slug,
+                      playerId: resolvedParticipantId,
+                      ...vote,
+                    }),
+                  );
+                });
+              }, 0);
+
+              return [];
+            });
+          }
+
+          if (payload?.type === "auth-denied") {
+            socketAuthenticatedRef.current = false;
+            setConnectionError(
+              "Could not verify your player identity for this room.",
+            );
+          }
 
           if (payload?.type === "room-state") {
             const nextClients = Array.isArray(payload.clients)
@@ -558,6 +633,24 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
   };
 
+  const handleCopyJoinLink = async () => {
+    const joinUrl = `${window.location.origin}/play/${slug}`;
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 1600);
+    } catch {
+      window.prompt("Copy this join link:", joinUrl);
+    }
+  };
+
+  const handleForceAdvance = () => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    socket.send(JSON.stringify({ type: "force-advance", slug }));
+  };
+
   const handleVote = (payload: {
     round: number;
     match: number;
@@ -567,8 +660,11 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
       return;
     }
 
-    if (socket.readyState !== WebSocket.OPEN) {
-      setConnectionError("Connection interrupted. Vote queued for resend.");
+    if (
+      socket.readyState !== WebSocket.OPEN ||
+      !socketAuthenticatedRef.current
+    ) {
+      setConnectionError("Still connecting. Your vote is queued.");
       setPendingVotes((current) => [...current, payload]);
       return;
     }
@@ -696,6 +792,32 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             >
               WAITING ROOM
             </Typography>
+          </Box>
+
+          {/* Scanning beats typing a code on a phone, which is the slowest
+              step in getting a group into a room. */}
+          <Box className="bracket-join-panel bracket-pop-in">
+            <Box className="bracket-join-qr">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/sessions/${slug}/qr`}
+                alt={`QR code to join room ${slug}`}
+                width={148}
+                height={148}
+              />
+            </Box>
+            <Box className="bracket-join-detail">
+              <Typography className="bracket-join-label">SCAN TO JOIN</Typography>
+              <Typography className="bracket-join-code">{slug}</Typography>
+              <Box
+                component="button"
+                type="button"
+                className="bracket-join-link"
+                onClick={handleCopyJoinLink}
+              >
+                {linkCopied ? "LINK COPIED" : "COPY JOIN LINK"}
+              </Box>
+            </Box>
           </Box>
 
           <Box
@@ -888,7 +1010,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
                       flexShrink: 0,
                     }}
                   >
-                    {initialsFor(client.displayName || "Guest")}
+                    <AvatarGlyph initials={initialsFor(client.displayName)} size={12} />
                   </Box>
                   <Typography
                     sx={{
@@ -1022,6 +1144,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           )}
           roomState={roomState ?? undefined}
           onVote={handleVote}
+          onForceAdvance={handleForceAdvance}
           onPlayAgain={handleStartGame}
           isHost={isHost}
           playerCount={Math.max(1, clients.length)}

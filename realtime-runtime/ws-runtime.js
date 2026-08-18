@@ -1,6 +1,7 @@
 const { URL } = require("url");
 const { WebSocketServer, WebSocket } = require("ws");
 const { MongoClient } = require("mongodb");
+const { timingSafeEqual } = require("crypto");
 
 const rooms = new Map();
 const roomCleanupTimers = new Map();
@@ -12,6 +13,19 @@ const DEFAULT_SESSION_TTL_MS = Number(
   process.env.SESSION_TTL_MS || 30 * 60 * 1000,
 );
 const DEFAULT_MATCH_SIZE = 2;
+
+// How long players get to vote once the intro clips have played out. Without
+// this a single idle player holds the whole room, because a match now needs
+// every connected player's vote to resolve.
+const VOTE_WINDOW_MS = Number(process.env.VOTE_WINDOW_MS || 30000);
+// Mirrors MAX_INTRO_CLIP_MS / STILL_CARD_MS / VS_MS in the client intro, so
+// the server's deadline lands after the clips rather than during them.
+const INTRO_MAX_CLIP_MS = 30000;
+const INTRO_STILL_MS = 250;
+const INTRO_VS_MS = 250;
+const INTRO_BUFFER_MS = 1500;
+
+const matchTimers = new Map();
 
 let mongoClientPromise;
 
@@ -382,6 +396,7 @@ function scheduleRoomExpiration(slug) {
 }
 
 function expireRoom(slug) {
+  clearMatchTimer(slug);
   const room = rooms.get(slug);
   if (!room) {
     return;
@@ -477,6 +492,46 @@ async function getOrCreateRoom(slug) {
     return await initializationPromise;
   } finally {
     roomInitializationPromises.delete(slug);
+  }
+}
+
+// participantId travels in the clear (it keys votesByMatch, which is
+// broadcast room-wide) so it proves nothing on its own. The token minted by
+// POST /api/sessions/[slug] is the actual credential and is checked here
+// before a socket is allowed to vote or start the game.
+async function verifyParticipantToken(slug, participantId, token) {
+  if (!participantId || typeof token !== "string" || token.length === 0) {
+    return false;
+  }
+
+  const projectionKey = `participantLookup.${participantId}.participantToken`;
+
+  try {
+    const session = await withSessionsCollection((sessions) =>
+      sessions.findOne({ slug }, { projection: { [projectionKey]: 1 } }),
+    );
+
+    // A null result means Mongo is unreachable or unconfigured. Sessions can
+    // only exist in Mongo, so there is no legitimate client to admit here.
+    if (!session) {
+      return false;
+    }
+
+    const stored = session?.participantLookup?.[participantId]?.participantToken;
+    if (typeof stored !== "string" || stored.length === 0) {
+      return false;
+    }
+
+    const storedBuffer = Buffer.from(stored, "utf8");
+    const providedBuffer = Buffer.from(token, "utf8");
+    if (storedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(storedBuffer, providedBuffer);
+  } catch (error) {
+    console.error("Failed to verify participant token:", error);
+    return false;
   }
 }
 
@@ -642,6 +697,286 @@ function normalizeBracketProgression(room) {
   }
 }
 
+function getActiveVoterCount(room) {
+  const voters = new Set();
+  room.clients.forEach((client) => {
+    if (client.authenticated && client.participantId) {
+      voters.add(client.participantId);
+    }
+  });
+  return voters.size;
+}
+
+// Tallies the live match and advances the bracket if the quorum is met.
+// Derives everything from room state so both an incoming vote and a
+// disconnect (which lowers the quorum) can drive it. Returns true if the
+// board moved on.
+function tallyAndAdvanceMatch(slug, room, options = {}) {
+  if (!room?.gameState) {
+    return false;
+  }
+
+  const force = Boolean(options.force);
+
+  let advanced = false;
+  const matchSize = getMatchSize(room);
+  const round = room.gameState.round ?? 0;
+  const match = room.gameState.currentMatch ?? 0;
+  const matchKey = getMatchKey(round, match);
+  const matchVotes = room.gameState.votesByMatch?.[matchKey] ?? {};
+
+  const currentRoundItems = room.gameState.currentRoundItems ?? [];
+  const { startIndex, items: matchItems } = getMatchWindow(
+    currentRoundItems,
+    match,
+    matchSize,
+  );
+  const left = matchItems[0];
+  const right = matchItems[1];
+
+  if (!left) {
+    return false;
+  }
+
+  // Every connected player gets a say. The quorum is the number of
+  // authenticated sockets actually in the room, so a 10-player room
+  // needs all 10 votes and is then decided by majority; an exact
+  // split falls through to resolveWinningChoice's coin flip.
+  const requiredVotes = Math.max(1, getActiveVoterCount(room));
+  room.gameState.pendingVoteCount = Object.keys(matchVotes).length;
+  room.gameState.requiredVoteCount = requiredVotes;
+
+  // `force` is the timer expiring or the host overriding: settle with whatever
+  // votes are in rather than waiting for a quorum that may never arrive.
+  if (force || room.gameState.pendingVoteCount >= requiredVotes) {
+    advanced = true;
+    const winningChoice = right
+      ? resolveWinningChoice(matchVotes, startIndex, startIndex + 1)
+      : startIndex;
+    const winnerItem =
+      right && winningChoice === startIndex + 1 ? right : left;
+    const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
+    nextRoundWinners[match] = winnerItem;
+
+    const pickedItemFor = (vote) =>
+      right && vote?.choice === startIndex + 1 ? right : left;
+    const voteCounts = {};
+    const matchHistoryVotes = [];
+    Object.entries(matchVotes).forEach(([voterId, vote]) => {
+      const pickedItem = pickedItemFor(vote);
+      if (!pickedItem?.id) {
+        return;
+      }
+      voteCounts[pickedItem.id] = (voteCounts[pickedItem.id] ?? 0) + 1;
+      matchHistoryVotes.push({
+        participantId: voterId,
+        itemId: pickedItem.id,
+      });
+    });
+
+    room.gameState.matchHistory = [
+      ...(room.gameState.matchHistory ?? []),
+      {
+        round,
+        match,
+        items: right
+          ? [
+              { id: left.id, title: left.title },
+              { id: right.id, title: right.title },
+            ]
+          : [{ id: left.id, title: left.title }],
+        voteCounts,
+        votes: matchHistoryVotes,
+        winnerItemId: winnerItem.id,
+        wasBye: false,
+      },
+    ];
+
+    const totalMatches = Math.ceil(
+      currentRoundItems.length / matchSize,
+    );
+    const completedMatches = nextRoundWinners.filter(Boolean).length;
+
+    room.gameState.roundWinners = nextRoundWinners;
+    room.gameState.pendingVoteCount = 0;
+    room.gameState.lastWinner = winnerItem;
+
+    if (completedMatches >= totalMatches) {
+      const nextRoundItems = nextRoundWinners.filter(Boolean);
+
+      if (nextRoundItems.length <= 1) {
+        room.gameState = {
+          ...room.gameState,
+          currentRoundItems: nextRoundItems,
+          currentMatch: 0,
+          votesByMatch: {},
+          pendingVoteCount: 0,
+          requiredVoteCount: 0,
+          roundWinners: [],
+          lastWinner: winnerItem,
+          winner: nextRoundItems[0] ?? null,
+        };
+        room.roomStatus = "completed";
+      } else {
+        room.gameState = {
+          ...room.gameState,
+          round: (room.gameState.round ?? 0) + 1,
+          currentMatch: 0,
+          currentRoundItems: nextRoundItems,
+          votesByMatch: {},
+          pendingVoteCount: 0,
+          requiredVoteCount: 0,
+          roundWinners: [],
+          lastWinner: winnerItem,
+        };
+      }
+    } else {
+      room.gameState.currentMatch =
+        (room.gameState.currentMatch ?? 0) + 1;
+    }
+
+    normalizeBracketProgression(room);
+
+    // The advance path zeroes requiredVoteCount, so republish the quorum for
+    // the match that just became current - otherwise the board shows a stale
+    // target until the first vote of the new match arrives.
+    if ((room.gameState.currentRoundItems ?? []).length > 1) {
+      room.gameState.requiredVoteCount = Math.max(1, getActiveVoterCount(room));
+      armMatchTimer(slug, room);
+    } else {
+      clearMatchTimer(slug);
+      room.gameState.matchDeadline = null;
+    }
+  }
+
+  return advanced;
+}
+
+function estimateIntroMs(matchItems) {
+  return (
+    matchItems.reduce((total, item) => {
+      if (!item) {
+        return total;
+      }
+
+      if (item.mediaType === "video" || /\/video\/upload\//.test(item.url ?? "")) {
+        const clipMs = Number(item.duration) > 0 ? Number(item.duration) * 1000 : INTRO_MAX_CLIP_MS;
+        return total + Math.min(clipMs, INTRO_MAX_CLIP_MS);
+      }
+
+      return total + INTRO_STILL_MS;
+    }, 0) +
+    INTRO_VS_MS +
+    INTRO_BUFFER_MS
+  );
+}
+
+function clearMatchTimer(slug) {
+  const timer = matchTimers.get(slug);
+  if (timer) {
+    clearTimeout(timer);
+    matchTimers.delete(slug);
+  }
+}
+
+// Arms the deadline for whichever match is now current and publishes it so
+// every client can render the same countdown.
+function armMatchTimer(slug, room) {
+  clearMatchTimer(slug);
+
+  if (!room?.gameState || room.roomStatus !== "started") {
+    return;
+  }
+
+  const matchSize = getMatchSize(room);
+  const currentRoundItems = room.gameState.currentRoundItems ?? [];
+  if (currentRoundItems.length <= 1) {
+    room.gameState.matchDeadline = null;
+    return;
+  }
+
+  const { items: matchItems } = getMatchWindow(
+    currentRoundItems,
+    room.gameState.currentMatch ?? 0,
+    matchSize,
+  );
+  if (!matchItems[0]) {
+    return;
+  }
+
+  const durationMs = estimateIntroMs(matchItems) + VOTE_WINDOW_MS;
+  room.gameState.matchDeadline = Date.now() + durationMs;
+
+  matchTimers.set(
+    slug,
+    setTimeout(() => {
+      matchTimers.delete(slug);
+      const liveRoom = rooms.get(slug);
+      if (!liveRoom || liveRoom.roomStatus !== "started") {
+        return;
+      }
+
+      // Time is up: settle with whatever votes were cast. A match with no
+      // votes at all still resolves, via resolveWinningChoice's coin flip.
+      const advanced = tallyAndAdvanceMatch(slug, liveRoom, { force: true });
+      broadcastGameUpdate(slug, {
+        type: "vote-update",
+        roomStatus: liveRoom.roomStatus,
+        gameState: publicGameState(liveRoom),
+      });
+      persistRoomSnapshot(slug, liveRoom, { gameStateChanged: advanced });
+      if (advanced) {
+        void recordGameHistoryIfNeeded(slug, liveRoom);
+      }
+    }, durationMs),
+  );
+}
+
+// Keeps the room alive while people are actually playing. The TTL used to run
+// from session creation, so a long bracket (30s clips x 15 matches) could hit
+// the wall mid-game and hard-close the room.
+function touchRoomExpiry(slug, room) {
+  if (!room) {
+    return;
+  }
+
+  const extended = new Date(Date.now() + DEFAULT_SESSION_TTL_MS);
+  const current = room.expiresAt ? new Date(room.expiresAt).getTime() : 0;
+  if (extended.getTime() > current) {
+    room.expiresAt = extended;
+    scheduleRoomExpiration(slug);
+  }
+}
+
+// Choices stay hidden until the match is settled, so nobody can see the score
+// before deciding. Voter ids are still sent - the board needs them to show who
+// has locked in and who it is waiting on.
+function publicGameState(room) {
+  const gameState = room?.gameState;
+  if (!gameState) {
+    return gameState;
+  }
+
+  const round = gameState.round ?? 0;
+  const match = gameState.currentMatch ?? 0;
+  const liveKey = getMatchKey(round, match);
+  const liveVotes = gameState.votesByMatch?.[liveKey];
+
+  if (!liveVotes) {
+    return gameState;
+  }
+
+  const redacted = {};
+  Object.entries(liveVotes).forEach(([participantId, vote]) => {
+    redacted[participantId] = { at: vote?.at ?? 0 };
+  });
+
+  return {
+    ...gameState,
+    votesByMatch: { ...gameState.votesByMatch, [liveKey]: redacted },
+  };
+}
+
 function assignHostIfMissing(room, participantId) {
   if (
     room.hostParticipantId ||
@@ -672,7 +1007,7 @@ function broadcastRoomState(slug) {
     type: "room-state",
     slug,
     clients: getRoomClients(slug),
-    gameState: rooms.get(slug)?.gameState ?? null,
+    gameState: rooms.get(slug) ? publicGameState(rooms.get(slug)) : null,
     roomStatus: rooms.get(slug)?.roomStatus ?? "waiting",
     hostParticipantId: rooms.get(slug)?.hostParticipantId ?? null,
   });
@@ -737,6 +1072,16 @@ function attachWsRuntime(server, options = {}) {
   });
 
   wss.on("connection", async (ws, req) => {
+    // Room setup below awaits Mongo, and on a cold connection that can take
+    // seconds. The listener has to exist before then or anything the client
+    // sends first - including its own join/auth - is dropped on the floor,
+    // so buffer here and drain once the real handler is installed.
+    const bufferedMessages = [];
+    let onClientMessage = (raw) => {
+      bufferedMessages.push(raw);
+    };
+    ws.on("message", (raw) => onClientMessage(raw));
+
     const hostHeader =
       typeof req.headers.host === "string" && req.headers.host.length > 0
         ? req.headers.host
@@ -804,18 +1149,19 @@ function attachWsRuntime(server, options = {}) {
       joinedAt: Date.now(),
       ws,
       displayName: queryDisplayName,
+      // Flipped only by a valid "auth" message. Until then the socket may
+      // observe room state but may not vote or start the game.
+      authenticated: false,
     };
 
-    if (queryParticipantId) {
-      assignHostIfMissing(room, queryParticipantId);
-      room.participantIds.add(queryParticipantId);
-    }
+    // participantIds is only extended once a socket proves who it is (see the
+    // "auth" handler); an unverified query param must not grow the roster.
 
     room.clients.set(ws, client);
     persistRoomSnapshot(slug, room);
     broadcastRoomState(slug);
 
-    ws.on("message", (message) => {
+    const handleClientMessage = (message) => {
       try {
         const data = JSON.parse(message.toString());
 
@@ -824,12 +1170,62 @@ function attachWsRuntime(server, options = {}) {
           return;
         }
 
+        if (data?.type === "auth") {
+          const claimedId =
+            typeof data.participantId === "string" ? data.participantId : null;
+
+          void verifyParticipantToken(
+            slug,
+            claimedId,
+            data.participantToken,
+          ).then((ok) => {
+            const entry = room.clients.get(ws);
+            if (!entry) {
+              return;
+            }
+
+            if (!ok) {
+              ws.send(
+                JSON.stringify({
+                  type: "auth-denied",
+                  message: "Could not verify your player identity.",
+                }),
+              );
+              return;
+            }
+
+            entry.participantId = claimedId;
+            entry.authenticated = true;
+            room.clients.set(ws, entry);
+            assignHostIfMissing(room, claimedId);
+            room.participantIds.add(claimedId);
+
+            ws.send(
+              JSON.stringify({ type: "auth-ok", participantId: claimedId }),
+            );
+
+            // Joining changes how many votes the live match needs.
+            if (room.roomStatus === "started") {
+              const advanced = tallyAndAdvanceMatch(slug, room);
+              broadcastGameUpdate(slug, {
+                type: "vote-update",
+                roomStatus: room.roomStatus,
+                gameState: publicGameState(room),
+              });
+              if (advanced) {
+                void recordGameHistoryIfNeeded(slug, room);
+              }
+            }
+
+            persistRoomSnapshot(slug, room);
+            broadcastRoomState(slug);
+          });
+        }
+
         if (data?.type === "join") {
-          const incomingParticipantId =
-            typeof data.participantId === "string" &&
-            data.participantId.length > 0
-              ? data.participantId
-              : room.clients.get(ws)?.id;
+          // Display name only. Identity comes from the verified "auth"
+          // message; a client-supplied participantId is not trusted here.
+          const incomingParticipantId = room.clients.get(ws)?.participantId;
           const isKnownParticipant = room.participantIds.has(
             incomingParticipantId,
           );
@@ -846,11 +1242,8 @@ function attachWsRuntime(server, options = {}) {
             return;
           }
 
-          assignHostIfMissing(room, incomingParticipantId);
-          room.participantIds.add(incomingParticipantId);
           room.clients.set(ws, {
             ...room.clients.get(ws),
-            participantId: incomingParticipantId,
             displayName: data.displayName || "Guest",
           });
 
@@ -872,7 +1265,18 @@ function attachWsRuntime(server, options = {}) {
             return;
           }
 
-          const requesterId = room.clients.get(ws)?.participantId;
+          const requester = room.clients.get(ws);
+          if (!requester?.authenticated) {
+            ws.send(
+              JSON.stringify({
+                type: "start-denied",
+                message: "Could not verify your player identity.",
+              }),
+            );
+            return;
+          }
+
+          const requesterId = requester.participantId;
           if (
             room.hostParticipantId &&
             requesterId !== room.hostParticipantId
@@ -913,13 +1317,51 @@ function attachWsRuntime(server, options = {}) {
           room.historyRecorded = false;
           room.gameStartedAt = new Date();
           normalizeBracketProgression(room);
+          // Publishes requiredVoteCount for the opening match, so the board
+          // shows the real target instead of a stale one until someone votes.
+          tallyAndAdvanceMatch(slug, room);
+          armMatchTimer(slug, room);
+          touchRoomExpiry(slug, room);
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
           void recordGameHistoryIfNeeded(slug, room);
           broadcastGameUpdate(slug, {
             type: "game-started",
             roomStatus: room.roomStatus,
-            gameState: room.gameState,
+            gameState: publicGameState(room),
           });
+        }
+
+        if (data?.type === "force-advance") {
+          const requester = room.clients.get(ws);
+          if (
+            !requester?.authenticated ||
+            (room.hostParticipantId &&
+              requester.participantId !== room.hostParticipantId)
+          ) {
+            ws.send(
+              JSON.stringify({
+                type: "force-denied",
+                message: "Only the room host can advance the match.",
+              }),
+            );
+            return;
+          }
+
+          if (room.roomStatus !== "started") {
+            return;
+          }
+
+          const advanced = tallyAndAdvanceMatch(slug, room, { force: true });
+          touchRoomExpiry(slug, room);
+          broadcastGameUpdate(slug, {
+            type: "vote-update",
+            roomStatus: room.roomStatus,
+            gameState: publicGameState(room),
+          });
+          persistRoomSnapshot(slug, room, { gameStateChanged: advanced });
+          if (advanced) {
+            void recordGameHistoryIfNeeded(slug, room);
+          }
         }
 
         if (data?.type === "vote") {
@@ -928,8 +1370,12 @@ function attachWsRuntime(server, options = {}) {
             return;
           }
 
-          const playerId =
-            room.clients.get(ws)?.participantId || room.clients.get(ws)?.id;
+          const voter = room.clients.get(ws);
+          if (!voter?.authenticated) {
+            return;
+          }
+
+          const playerId = voter.participantId;
           const round =
             typeof data.round === "number"
               ? data.round
@@ -951,6 +1397,15 @@ function attachWsRuntime(server, options = {}) {
             return;
           }
 
+          // Only the two indices belonging to the live match are votable.
+          // Without this, any number is accepted and resolveWinningChoice
+          // tallies everything that is not rightIndex as a vote for left, so
+          // a bogus choice silently became a left vote.
+          const voteStartIndex = match * matchSize;
+          if (choice !== voteStartIndex && choice !== voteStartIndex + 1) {
+            return;
+          }
+
           const matchKey = getMatchKey(round, match);
           const existingVotes = room.gameState.votesByMatch ?? {};
           const matchVotes = {
@@ -966,121 +1421,14 @@ function attachWsRuntime(server, options = {}) {
             [matchKey]: matchVotes,
           };
 
-          const currentRoundItems = room.gameState.currentRoundItems ?? [];
-          const { startIndex, items: matchItems } = getMatchWindow(
-            currentRoundItems,
-            match,
-            matchSize,
-          );
-          const left = matchItems[0];
-          const right = matchItems[1];
-
-          if (!left) {
-            return;
-          }
-
-          const activeParticipantCount = room.participantIds.size;
-          const requiredVotes = Math.max(
-            1,
-            Math.min(matchSize, activeParticipantCount),
-          );
-          room.gameState.pendingVoteCount = Object.keys(matchVotes).length;
-          room.gameState.requiredVoteCount = requiredVotes;
-
-          if (room.gameState.pendingVoteCount >= requiredVotes) {
-            const winningChoice = right
-              ? resolveWinningChoice(matchVotes, startIndex, startIndex + 1)
-              : startIndex;
-            const winnerItem =
-              right && winningChoice === startIndex + 1 ? right : left;
-            const nextRoundWinners = [...(room.gameState.roundWinners ?? [])];
-            nextRoundWinners[match] = winnerItem;
-
-            const pickedItemFor = (vote) =>
-              right && vote?.choice === startIndex + 1 ? right : left;
-            const voteCounts = {};
-            const matchHistoryVotes = [];
-            Object.entries(matchVotes).forEach(([voterId, vote]) => {
-              const pickedItem = pickedItemFor(vote);
-              if (!pickedItem?.id) {
-                return;
-              }
-              voteCounts[pickedItem.id] = (voteCounts[pickedItem.id] ?? 0) + 1;
-              matchHistoryVotes.push({
-                participantId: voterId,
-                itemId: pickedItem.id,
-              });
-            });
-
-            room.gameState.matchHistory = [
-              ...(room.gameState.matchHistory ?? []),
-              {
-                round,
-                match,
-                items: right
-                  ? [
-                      { id: left.id, title: left.title },
-                      { id: right.id, title: right.title },
-                    ]
-                  : [{ id: left.id, title: left.title }],
-                voteCounts,
-                votes: matchHistoryVotes,
-                winnerItemId: winnerItem.id,
-                wasBye: false,
-              },
-            ];
-
-            const totalMatches = Math.ceil(
-              currentRoundItems.length / matchSize,
-            );
-            const completedMatches = nextRoundWinners.filter(Boolean).length;
-
-            room.gameState.roundWinners = nextRoundWinners;
-            room.gameState.pendingVoteCount = 0;
-            room.gameState.lastWinner = winnerItem;
-
-            if (completedMatches >= totalMatches) {
-              const nextRoundItems = nextRoundWinners.filter(Boolean);
-
-              if (nextRoundItems.length <= 1) {
-                room.gameState = {
-                  ...room.gameState,
-                  currentRoundItems: nextRoundItems,
-                  currentMatch: 0,
-                  votesByMatch: {},
-                  pendingVoteCount: 0,
-                  requiredVoteCount: 0,
-                  roundWinners: [],
-                  lastWinner: winnerItem,
-                  winner: nextRoundItems[0] ?? null,
-                };
-                room.roomStatus = "completed";
-              } else {
-                room.gameState = {
-                  ...room.gameState,
-                  round: (room.gameState.round ?? 0) + 1,
-                  currentMatch: 0,
-                  currentRoundItems: nextRoundItems,
-                  votesByMatch: {},
-                  pendingVoteCount: 0,
-                  requiredVoteCount: 0,
-                  roundWinners: [],
-                  lastWinner: winnerItem,
-                };
-              }
-            } else {
-              room.gameState.currentMatch =
-                (room.gameState.currentMatch ?? 0) + 1;
-            }
-
-            normalizeBracketProgression(room);
-          }
+          touchRoomExpiry(slug, room);
+          tallyAndAdvanceMatch(slug, room);
 
           broadcastGameUpdate(slug, {
             type: "vote-update",
             roomStatus: room.roomStatus,
             vote: data,
-            gameState: room.gameState,
+            gameState: publicGameState(room),
           });
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
           void recordGameHistoryIfNeeded(slug, room);
@@ -1089,7 +1437,10 @@ function attachWsRuntime(server, options = {}) {
       } catch (error) {
         console.error("WebSocket message error:", error);
       }
-    });
+    };
+
+    onClientMessage = handleClientMessage;
+    bufferedMessages.splice(0).forEach(handleClientMessage);
 
     ws.on("close", () => {
       const currentRoom = rooms.get(slug);
@@ -1104,6 +1455,24 @@ function attachWsRuntime(server, options = {}) {
         persistRoomSnapshot(slug, currentRoom);
         scheduleRoomCleanup(slug);
       } else {
+        // Leaving lowers the quorum, so the players still here may already
+        // have decided the match. Without this re-tally one person closing
+        // their tab mid-match would stall the room until they came back.
+        if (currentRoom.roomStatus === "started") {
+          const advanced = tallyAndAdvanceMatch(slug, currentRoom);
+          broadcastGameUpdate(slug, {
+            type: "vote-update",
+            roomStatus: currentRoom.roomStatus,
+            gameState: publicGameState(currentRoom),
+          });
+          persistRoomSnapshot(slug, currentRoom, {
+            gameStateChanged: advanced,
+          });
+          if (advanced) {
+            void recordGameHistoryIfNeeded(slug, currentRoom);
+          }
+        }
+
         broadcastRoomState(slug);
       }
     });

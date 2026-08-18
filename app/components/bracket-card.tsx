@@ -3,6 +3,7 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import { initialsFor, swatchForIndex } from "@/lib/avatar";
+import AvatarGlyph from "./avatar-glyph";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
 interface BracketItem {
@@ -105,7 +106,7 @@ export default function BracketCard({
               flexShrink: 0,
             }}
           >
-            {initialsFor(item.user?.name ?? "Guest")}
+            <AvatarGlyph initials={initialsFor(item.user?.name)} size={12} />
           </Box>
           <Typography
             sx={{

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -13,9 +14,11 @@ import Image from "next/image";
 import { ContentCopy, CheckCircle } from "@mui/icons-material";
 
 import GameItemCard, { type Voter } from "./game-item-card";
+import MatchIntro from "./match-intro";
 import { initialsFor } from "@/lib/avatar";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 import { buildShareCardUrl } from "@/lib/share-card";
+import { previewImageUrl } from "@/lib/media";
 
 type Item = ComponentProps<typeof GameItemCard>["item"];
 
@@ -56,7 +59,7 @@ function votersForChoice(
 
   const visible = entries.slice(-5).map(([participantId]) => ({
     id: participantId,
-    initials: initialsFor(participants[participantId] ?? "Guest"),
+    initials: initialsFor(participants[participantId]),
     color: colorForParticipant(participantId),
   }));
 
@@ -87,9 +90,19 @@ type BracketGameProps = {
     requiredVoteCount?: number;
     winner?: Item | null;
     lastWinner?: Item | null;
+    matchDeadline?: number | null;
+    matchHistory?: Array<{
+      round: number;
+      match: number;
+      items: Array<{ id: string; title: string }>;
+      voteCounts: Record<string, number>;
+      winnerItemId: string;
+      wasBye: boolean;
+    }>;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
   onPlayAgain?: () => void;
+  onForceAdvance?: () => void;
   isHost?: boolean;
   playerCount?: number;
 };
@@ -102,6 +115,7 @@ export default function BracketGame({
   roomState,
   onVote,
   onPlayAgain,
+  onForceAdvance,
   isHost,
   playerCount,
 }: BracketGameProps) {
@@ -112,10 +126,6 @@ export default function BracketGame({
   );
   const [shareCopied, setShareCopied] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
-  const [introPhase, setIntroPhase] = useState<"card1" | "vs" | "card2">(
-    "card1",
-  );
-  const [introKey, setIntroKey] = useState(0);
   const [boardVisible, setBoardVisible] = useState(true);
 
   useEffect(() => {
@@ -208,12 +218,53 @@ export default function BracketGame({
     requiredVotes - (leftVoters.count + rightVoters.count),
   );
 
+  // Choices are hidden until the match settles, so the board reports who has
+  // locked in rather than how the vote is going.
+  const votedIds = useMemo(
+    () => new Set(Object.keys(currentMatchVotes ?? {})),
+    [currentMatchVotes],
+  );
+  const lockedInCount = votedIds.size;
+  const waitingOn = useMemo(
+    () =>
+      Object.entries(participants)
+        .filter(([participantId]) => !votedIds.has(participantId))
+        .map(([, name]) => name || "Guest"),
+    [participants, votedIds],
+  );
+
+  const deadline = roomState?.matchDeadline ?? null;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!deadline) {
+      return;
+    }
+    const id = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [deadline]);
+
+  const secondsLeft =
+    deadline && currentRoundItems.length > 1
+      ? Math.max(0, Math.ceil((deadline - nowMs) / 1000))
+      : null;
+
   const statusLine =
     currentRoundItems.length <= 1
       ? ""
       : remainingVotes > 0
-        ? `TAP A CARD · ${remainingVotes} MORE VOTE${remainingVotes === 1 ? "" : "S"} TO ADVANCE`
-        : "ADVANCING…";
+        ? `TAP A CARD · ${lockedInCount} OF ${requiredVotes} LOCKED IN`
+        : "REVEALING…";
+
+  // The result of the match that just finished, revealed at the start of the
+  // next matchup instead of leaking live while people are still voting.
+  const previousResult = useMemo(() => {
+    const history = roomState?.matchHistory ?? [];
+    const last = history[history.length - 1];
+    if (!last || last.wasBye || (last.items?.length ?? 0) < 2) {
+      return null;
+    }
+    return last;
+  }, [roomState?.matchHistory]);
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
@@ -237,41 +288,31 @@ export default function BracketGame({
     }
   };
 
+  // The intro itself sequences the two contenders (and plays their clips) —
+  // this only decides when a new match should re-open it.
   useEffect(() => {
-    if (currentRoundItems.length <= 1) {
+    if (currentRoundItems.length <= 1 || !left) {
       setShowIntro(false);
       setBoardVisible(true);
       return;
     }
 
-    if (!left) {
-      return;
-    }
-
-    setIntroKey((value) => value + 1);
-    setIntroPhase("card1");
     setShowIntro(true);
     setBoardVisible(false);
-
-    const card1Timer = window.setTimeout(() => setIntroPhase("vs"), 250);
-    const card2Timer = window.setTimeout(() => setIntroPhase("card2"), 500);
-    const boardTimer = window.setTimeout(() => {
-      setShowIntro(false);
-      setBoardVisible(true);
-    }, 850);
-
-    return () => {
-      window.clearTimeout(card1Timer);
-      window.clearTimeout(card2Timer);
-      window.clearTimeout(boardTimer);
-    };
   }, [
     currentMatch,
     currentRoundItems.length,
+    left?.id,
     left?.title,
     round,
+    right?.id,
     right?.title,
   ]);
+
+  const handleIntroComplete = useCallback(() => {
+    setShowIntro(false);
+    setBoardVisible(true);
+  }, []);
 
   const confetti = useMemo(
     () =>
@@ -301,6 +342,10 @@ export default function BracketGame({
 
   const isFinalWinner = currentRoundItems.length === 1;
   const winnerItem = currentRoundItems[0];
+  // A video winner has no image derivative, so the winner card shows its
+  // poster frame. The share card takes the raw url and applies its own frame
+  // grab, so it must not be handed an already-transformed poster.
+  const winnerPreviewUrl = previewImageUrl(winnerItem);
   const shareUrl = winnerItem
     ? buildShareCardUrl({
         imageUrl: winnerItem.url,
@@ -312,12 +357,12 @@ export default function BracketGame({
   return (
     <Container>
       <Box
-        className="bracket-shell"
+        className={`bracket-shell${isFinalWinner ? "" : " bracket-shell--game"}`}
         sx={{
-          padding: "18px 18px 26px",
+          padding: "12px 14px 14px",
           display: "flex",
           flexDirection: "column",
-          gap: 2,
+          gap: 1,
         }}
       >
         <Stack
@@ -382,8 +427,8 @@ export default function BracketGame({
               sx={{
                 margin: 0,
                 fontFamily: "var(--font-display)",
-                fontSize: "34px",
-                lineHeight: 1.1,
+                fontSize: "clamp(20px, 5vw, 30px)",
+                lineHeight: 1.05,
                 letterSpacing: "1px",
                 color: "info.main",
               }}
@@ -413,7 +458,6 @@ export default function BracketGame({
               position: "relative",
               display: "flex",
               flexDirection: "column",
-              gap: "22px",
               mt: 0.75,
             }}
           >
@@ -421,7 +465,7 @@ export default function BracketGame({
               className="bracket-round-item bracket-round-item--left"
               style={
                 {
-                  ["--bracket-item-delay" as "--bracket-item-delay"]: "0ms",
+                  ["--bracket-item-delay" as const]: "0ms",
                 } as CSSProperties
               }
             >
@@ -439,40 +483,12 @@ export default function BracketGame({
               ) : null}
             </Box>
 
+            {/* In flow between the two cards, pulled into the gap with
+                negative margins, so it tracks the real boundary whatever
+                height each card ends up being. */}
             {right ? (
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  width: "52px",
-                  height: "52px",
-                  zIndex: 3,
-                  transform: "translate(-50%, -50%)",
-                }}
-                className="bracket-vs-badge"
-              >
-                <Box
-                  sx={{
-                    width: "52px",
-                    height: "52px",
-                    borderRadius: "50%",
-                    backgroundColor: "var(--tertiary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: "12px",
-                      color: "var(--card)",
-                    }}
-                  >
-                    VS
-                  </Typography>
-                </Box>
+              <Box className="bracket-vs-badge">
+                <Typography className="bracket-vs-label">VS</Typography>
               </Box>
             ) : null}
 
@@ -481,7 +497,7 @@ export default function BracketGame({
                 className="bracket-round-item bracket-round-item--right"
                 style={
                   {
-                    ["--bracket-item-delay" as "--bracket-item-delay"]: "60ms",
+                    ["--bracket-item-delay" as const]: "60ms",
                   } as CSSProperties
                 }
               >
@@ -501,17 +517,58 @@ export default function BracketGame({
         ) : null}
 
         {!isFinalWinner ? (
-          <Typography
+          <Box
             sx={{
-              textAlign: "center",
-              fontFamily: "var(--font-heading)",
-              fontSize: "12px",
-              letterSpacing: "2px",
-              color: "text.secondary",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "8px",
             }}
           >
-            {statusLine}
-          </Typography>
+            <Typography
+              sx={{
+                textAlign: "center",
+                fontFamily: "var(--font-heading)",
+                fontSize: "12px",
+                letterSpacing: "2px",
+                color: "text.secondary",
+              }}
+            >
+              {statusLine}
+            </Typography>
+
+            {secondsLeft !== null ? (
+              <Box
+                className="bracket-timer"
+                data-urgent={secondsLeft <= 10 ? "true" : undefined}
+                role="timer"
+                aria-label={`${secondsLeft} seconds left to vote`}
+              >
+                <Box
+                  className="bracket-timer-fill"
+                  sx={{ width: `${Math.min(100, (secondsLeft / 30) * 100)}%` }}
+                />
+                <span className="bracket-timer-value">{secondsLeft}s</span>
+              </Box>
+            ) : null}
+
+            {waitingOn.length > 0 && waitingOn.length <= 6 ? (
+              <Typography
+                sx={{
+                  textAlign: "center",
+                  fontFamily: "var(--font-body)",
+                  fontSize: "12px",
+                  color: "text.secondary",
+                }}
+              >
+                Waiting on {waitingOn.join(", ")}
+              </Typography>
+            ) : null}
+
+            {/* The host override lived here, but it cost a whole row of
+                vertical space on phones. The vote timer already guarantees a
+                match cannot stall, so this is not the only escape hatch. */}
+          </Box>
         ) : null}
 
         {connected === false ? (
@@ -539,61 +596,13 @@ export default function BracketGame({
         ) : null}
 
         {showIntro && left ? (
-          <Box className="bracket-intro-overlay">
-            <Box className="bracket-intro-stage">
-              <Box
-                key={`${introKey}-card1`}
-                className="bracket-intro-card bracket-intro-card--card1"
-              >
-                <GameItemCard
-                  item={left}
-                  index={leftIndex}
-                  handleVote={handleVote}
-                  className="bracket-round-item__card"
-                />
-              </Box>
-
-              {introPhase !== "card1" ? (
-                <Box
-                  key={`${introKey}-vs`}
-                  className="bracket-intro-vs"
-                  sx={{
-                    width: "52px",
-                    height: "52px",
-                    borderRadius: "50%",
-                    backgroundColor: "var(--tertiary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: "14px",
-                      color: "var(--card)",
-                    }}
-                  >
-                    VS
-                  </Typography>
-                </Box>
-              ) : null}
-
-              {introPhase === "card2" && right ? (
-                <Box
-                  key={`${introKey}-card2`}
-                  className="bracket-intro-card bracket-intro-card--card2"
-                >
-                  <GameItemCard
-                    item={right}
-                    index={rightIndex}
-                    handleVote={handleVote}
-                    className="bracket-round-item__card"
-                  />
-                </Box>
-              ) : null}
-            </Box>
-          </Box>
+          <MatchIntro
+            key={matchKey}
+            left={left}
+            right={right}
+            previousResult={previousResult}
+            onComplete={handleIntroComplete}
+          />
         ) : null}
 
         {isFinalWinner ? (
@@ -640,7 +649,7 @@ export default function BracketGame({
             >
               <Box
                 sx={{
-                  height: "120px",
+                  height: "clamp(110px, 20vh, 170px)",
                   borderRadius: "14px",
                   overflow: "hidden",
                   position: "relative",
@@ -649,9 +658,9 @@ export default function BracketGame({
                     "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 10px, rgba(255,255,255,0.015) 10px 20px)",
                 }}
               >
-                {currentRoundItems[0]?.url ? (
+                {winnerPreviewUrl ? (
                   <Image
-                    src={currentRoundItems[0].url}
+                    src={winnerPreviewUrl}
                     alt={currentRoundItems[0].title}
                     fill
                     sizes="300px"

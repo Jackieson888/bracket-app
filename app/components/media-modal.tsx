@@ -2,19 +2,27 @@
 
 import { Modal, Box, Grow } from "@mui/material";
 import Image from "next/image";
+import { resolveMediaType, videoPosterUrl, videoSourceUrl } from "@/lib/media";
 
 interface MediaModalProps {
   open: boolean;
   onClose: () => void;
-  item: { url: string; title: string; width?: number; height?: number } | null;
+  item: {
+    url: string;
+    title: string;
+    width?: number;
+    height?: number;
+    mediaType?: "image" | "video";
+  } | null;
 }
 
 export default function MediaModal({ open, onClose, item }: MediaModalProps) {
   if (!item) return null;
 
-  const isImage = item.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-  const isVideo = item.url?.match(/\.(mp4|webm|ogg)$/i);
-  const isAudio = item.url?.match(/\.(mp3|wav|aac)$/i);
+  const mediaType = resolveMediaType(item);
+  const isImage = mediaType === "image";
+  const isVideo = mediaType === "video";
+  const isAudio = mediaType === "audio";
 
   return (
     <Modal
@@ -68,8 +76,12 @@ export default function MediaModal({ open, onClose, item }: MediaModalProps) {
 
             {isVideo && (
               <video
-                src={item.url}
+                src={videoSourceUrl(item.url, { maxWidth: 1080 }) ?? item.url}
+                poster={videoPosterUrl(item, { maxWidth: 1080 }) ?? undefined}
                 controls
+                autoPlay
+                playsInline
+                aria-label={item.title}
                 style={{ maxWidth: "100%", maxHeight: "80vh", borderRadius: 8 }}
               />
             )}

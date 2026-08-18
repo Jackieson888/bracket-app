@@ -27,6 +27,7 @@
     "mongodb": "^7.5.0",
     "next": "^16.2.12",
     "next-cloudinary": "^6.17.5",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "ws": "^8.21.1"
@@ -36,6 +37,7 @@
     "@aws-amplify/backend-cli": "^1.4.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/ws": "^8.18.1",

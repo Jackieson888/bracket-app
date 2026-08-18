@@ -1,6 +1,6 @@
 "use client";
 
-import { styled, Box, TextField } from "@mui/material";
+import { styled, Box, TextField, Typography } from "@mui/material";
 import React, { useState } from "react";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
@@ -23,6 +23,8 @@ type BracketItem = {
   url?: string;
   width?: number;
   height?: number;
+  mediaType?: "image" | "video";
+  duration?: number | null;
 };
 
 export default function NewBracketItemCard({
@@ -33,11 +35,13 @@ export default function NewBracketItemCard({
   const [title, setTitle] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
     setFile(selected);
+    setUploadError(null);
   };
 
   const handleUpload = async (file: string | Blob) => {
@@ -53,39 +57,48 @@ export default function NewBracketItemCard({
 
     const data = await res.json();
 
-    const newItem = {
-      title,
+    setUploading(false);
+
+    if (!res.ok || !data.url) {
+      setUploadError(data.error ?? "Upload failed. Try another file.");
+      return null;
+    }
+
+    return {
       url: data.url,
       width: data.width,
       height: data.height,
+      mediaType: data.mediaType ?? "image",
+      duration: data.duration ?? null,
     };
-
-    setUploading(false);
-
-    return newItem;
   };
 
   const handleSubmit = async () => {
     if (!title.trim()) return;
 
-    let imageObj = null;
+    let mediaObj = null;
 
     if (file) {
-      imageObj = await handleUpload(file);
+      mediaObj = await handleUpload(file);
+      // A failed upload keeps the typed title and the picked file so the
+      // player can retry instead of silently adding a media-less contender.
+      if (!mediaObj) return;
     }
 
     const newItem = {
       title: title.trim().toUpperCase(),
-      ...imageObj,
+      ...mediaObj,
     };
 
     onAddItem(newItem);
 
     setTitle("");
     setFile(null);
+    setUploadError(null);
   };
 
   return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: "6px" }}>
     <Box
       sx={{
         display: "flex",
@@ -179,7 +192,7 @@ export default function NewBracketItemCard({
           </svg>
           <HiddenInput
             type="file"
-            accept="image/*"
+            accept="image/*,video/mp4,video/quicktime,video/webm"
             onChange={handleFileSelect}
           />
         </Box>
@@ -219,6 +232,32 @@ export default function NewBracketItemCard({
           </svg>
         </Box>
       </Box>
+    </Box>
+      {file && !uploadError ? (
+        <Typography
+          sx={{
+            px: "6px",
+            fontFamily: "var(--font-body)",
+            fontSize: "12px",
+            color: "text.secondary",
+          }}
+        >
+          {uploading ? "Uploading" : "Ready"}: {file.name}
+        </Typography>
+      ) : null}
+      {uploadError ? (
+        <Typography
+          role="alert"
+          sx={{
+            px: "6px",
+            fontFamily: "var(--font-body)",
+            fontSize: "12px",
+            color: "error.main",
+          }}
+        >
+          {uploadError}
+        </Typography>
+      ) : null}
     </Box>
   );
 }

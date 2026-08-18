@@ -8,6 +8,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Image from "next/image";
 import { swatchForIndex } from "@/lib/avatar";
+import { isVideoItem, previewImageUrl } from "@/lib/media";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 
 interface item {
@@ -15,6 +16,7 @@ interface item {
   url?: string;
   width?: number;
   height?: number;
+  mediaType?: "image" | "video";
 }
 
 export default function BracketItemCard({
@@ -50,6 +52,7 @@ export default function BracketItemCard({
   });
 
   const swatch = swatchForIndex(index);
+  const thumbnailUrl = previewImageUrl(item);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -120,14 +123,23 @@ export default function BracketItemCard({
             "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, rgba(255,255,255,0.015) 8px 16px)",
         }}
       >
-        {item.url ? (
-          <Image
-            src={item.url}
-            alt={item.title}
-            fill
-            sizes="64px"
-            style={{ objectFit: "cover" }}
-          />
+        {thumbnailUrl ? (
+          <>
+            <Image
+              src={thumbnailUrl}
+              alt={item.title}
+              fill
+              sizes="64px"
+              style={{ objectFit: "cover" }}
+            />
+            {isVideoItem(item) ? (
+              <Box className="bracket-play-badge bracket-play-badge--small" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path d="M8 5.5v13l11-6.5-11-6.5Z" fill="currentColor" />
+                </svg>
+              </Box>
+            ) : null}
+          </>
         ) : (
           <Box
             sx={{

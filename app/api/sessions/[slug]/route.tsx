@@ -3,9 +3,41 @@ import { toPublicUser, toPublicParticipant, type ParticipantRecord } from "@/lib
 import { auth0 } from "@/lib/auth0";
 
 import { NextRequest } from "next/server";
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "crypto";
+import { checkRateLimit, clientKey, rateLimitResponse } from "@/lib/rate-limit";
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
+
+// Room codes are short enough to be worth guessing, so cap how fast one
+// client can probe them or churn joins.
+const LOOKUP_LIMIT = 30;
+const LOOKUP_WINDOW_MS = 60_000;
+const JOIN_LIMIT = 20;
+const JOIN_WINDOW_MS = 60_000;
+
+// participantId is public - it keys votesByMatch, which is broadcast to every
+// client in the room, and it is returned by GET for the lobby roster. So it
+// cannot double as the credential. This token is the credential: minted here,
+// returned only to the joining client, never included in any broadcast or in
+// toPublicParticipant's whitelist.
+function mintParticipantToken() {
+  return randomBytes(32).toString("hex");
+}
+
+function tokensMatch(stored: unknown, provided: unknown): boolean {
+  if (typeof stored !== "string" || typeof provided !== "string") {
+    return false;
+  }
+
+  const storedBuffer = Buffer.from(stored, "utf8");
+  const providedBuffer = Buffer.from(provided, "utf8");
+
+  if (storedBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(storedBuffer, providedBuffer);
+}
 
 interface Params {
   slug: string;
@@ -39,6 +71,15 @@ export async function GET(
   { params }: RouteContext,
 ): Promise<Response> {
   try {
+    const limit = checkRateLimit(
+      clientKey(_req, "session-lookup"),
+      LOOKUP_LIMIT,
+      LOOKUP_WINDOW_MS,
+    );
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryAfterSeconds);
+    }
+
     const client = await clientPromise;
     const db = client.db("test");
     const sessions = db.collection("sessions");
@@ -90,6 +131,15 @@ export async function POST(
   { params }: RouteContext,
 ): Promise<Response> {
   try {
+    const limit = checkRateLimit(
+      clientKey(req, "session-join"),
+      JOIN_LIMIT,
+      JOIN_WINDOW_MS,
+    );
+    if (!limit.ok) {
+      return rateLimitResponse(limit.retryAfterSeconds);
+    }
+
     const body = await req.json().catch(() => ({}));
     const { slug } = await params;
     const authSession = await auth0.getSession();
@@ -118,6 +168,7 @@ export async function POST(
           createdAt: 1,
           roomStatus: 1,
           participantIds: 1,
+          participantLookup: 1,
         },
       },
     );
@@ -134,6 +185,25 @@ export async function POST(
     const isKnownParticipant = Array.isArray(existingSession.participantIds)
       ? existingSession.participantIds.includes(participantId)
       : false;
+
+    const existingRecord = (
+      existingSession.participantLookup as
+        | Record<string, { participantToken?: string }>
+        | undefined
+    )?.[participantId];
+    const existingToken = existingRecord?.participantToken;
+
+    // Reclaiming an identity that already has a credential requires presenting
+    // it. Without this check anyone could read a participantId out of the
+    // public GET response and take over that player's slot (and their vote).
+    if (existingToken && !tokensMatch(existingToken, body.participantToken)) {
+      return Response.json(
+        { error: "This player slot belongs to another device." },
+        { status: 403 },
+      );
+    }
+
+    const participantToken = existingToken ?? mintParticipantToken();
 
     if (existingSession.roomStatus === "started" && !isKnownParticipant) {
       return Response.json(
@@ -153,6 +223,7 @@ export async function POST(
             participantId,
             displayName,
             authUserId,
+            participantToken,
             lastSeenAt: now,
           },
         },
@@ -194,6 +265,7 @@ export async function POST(
     return Response.json({
       slug,
       participantId,
+      participantToken,
       participants,
     });
   } catch (err) {
