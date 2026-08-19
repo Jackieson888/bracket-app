@@ -427,7 +427,13 @@ export default function BracketGame({
           </Typography>
         ) : null}
         {!isFinalWinner ? (
-          <Box sx={{ textAlign: "center", pt: 0.5 }}>
+          // Keyed by match so the heading re-fades as the game advances,
+          // rather than the numbers silently swapping under you.
+          <Box
+            key={matchKey}
+            className="bracket-pop-in-fade"
+            sx={{ textAlign: "center", pt: 0.5 }}
+          >
             <Typography
               component="h1"
               sx={{

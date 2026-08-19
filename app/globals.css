@@ -268,7 +268,9 @@ samp {
   right: 0;
   bottom: 0;
   opacity: 0.22;
-  transition: height 250ms ease-in;
+  /* ease-in started slowly and stopped dead; votes should land the other way
+     round - immediate, then settling. */
+  transition: height 380ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .bracket-voter-avatar {
@@ -575,6 +577,15 @@ samp {
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes revealBarGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
@@ -976,6 +987,8 @@ samp {
   .bracket-intro-card--card1,
   .bracket-intro-card--card2,
   .bracket-intro-vs,
+  .bracket-reveal-bar,
+  .bracket-timer[data-urgent="true"] .bracket-timer-value,
   .bracket-winner-card,
   .bracket-confetti-piece,
   .bracket-pop-in,
@@ -1069,6 +1082,12 @@ samp {
   opacity: 0.55;
 }
 
+/* Last ten seconds: the number itself breathes, so urgency is not carried by
+   colour alone. */
+.bracket-timer[data-urgent="true"] .bracket-timer-value {
+  animation: pulseSoft 1.1s ease-in-out infinite;
+}
+
 .bracket-timer-value {
   position: relative;
   font-family: var(--font-mono-ui), monospace;
@@ -1139,6 +1158,10 @@ samp {
   background: var(--primary);
   opacity: 0.22;
   transition: width 600ms cubic-bezier(0.18, 1, 0.32, 1);
+  /* The panel mounts with its final widths, so the split arrived fully drawn.
+     Growing from the left reads as the result being counted out. */
+  transform-origin: left center;
+  animation: revealBarGrow 560ms cubic-bezier(0.18, 1, 0.32, 1) both;
 }
 
 .bracket-reveal-title,

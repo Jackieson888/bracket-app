@@ -63,8 +63,22 @@ export default function GameItemCard({
           borderRadius: "20px",
           border: "2px solid",
           borderColor: accentColor ?? "rgba(255,255,255,0.08)",
-          transition: "border-color 200ms ease-in, transform 200ms ease-in",
+          // ease-in makes a tap feel laggy: nothing moves, then it snaps.
+          // Decelerating gives the press an immediate response instead.
+          transition:
+            "border-color 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
           transform: accentColor ? "scale(1.015)" : "scale(1)",
+          // Tactile confirmation that the tap registered, before the vote
+          // round-trips through the server.
+          "&:active": {
+            transform: accentColor ? "scale(0.995)" : "scale(0.985)",
+            transitionDuration: "90ms",
+          },
+          "@media (prefers-reduced-motion: reduce)": {
+            transition: "border-color 220ms linear",
+            transform: "none",
+            "&:active": { transform: "none" },
+          },
         }}
       >
         {/* Sibling of the action area, not a child: CardActionArea renders a
