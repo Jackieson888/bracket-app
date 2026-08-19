@@ -8,7 +8,14 @@ const roomCleanupTimers = new Map();
 const roomExpirationTimers = new Map();
 const roomInitializationPromises = new Map();
 const roomPersistenceQueues = new Map();
+const hostHandoffTimers = new Map();
 const ROOM_IDLE_TTL_MS = Number(process.env.ROOM_IDLE_TTL_MS || 300000);
+// Grace period before an absent host loses the role. Long enough that a
+// refresh, a tunnel change, or a phone locking the screen keeps the host where
+// it is; short enough that the players still in the room are not stranded.
+const HOST_HANDOFF_GRACE_MS = Number(
+  process.env.HOST_HANDOFF_GRACE_MS || 15000,
+);
 const DEFAULT_SESSION_TTL_MS = Number(
   process.env.SESSION_TTL_MS || 30 * 60 * 1000,
 );
@@ -319,6 +326,7 @@ function scheduleRoomCleanup(slug) {
       return;
     }
 
+    clearHostHandoff(slug);
     rooms.delete(slug);
   }, ROOM_IDLE_TTL_MS);
 
@@ -404,6 +412,7 @@ function expireRoom(slug) {
 
   clearRoomExpiration(slug);
   clearRoomCleanup(slug);
+  clearHostHandoff(slug);
 
   room.roomStatus = "expired";
   room.gameState = {
@@ -989,6 +998,83 @@ function assignHostIfMissing(room, participantId) {
   room.hostParticipantId = participantId;
 }
 
+function isHostConnected(room) {
+  if (!room?.hostParticipantId) {
+    return false;
+  }
+
+  for (const client of room.clients.values()) {
+    if (
+      client.authenticated &&
+      client.participantId === room.hostParticipantId
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function clearHostHandoff(slug) {
+  const timer = hostHandoffTimers.get(slug);
+  if (!timer) {
+    return;
+  }
+
+  clearTimeout(timer);
+  hostHandoffTimers.delete(slug);
+}
+
+// The host id is persisted, so without a handoff a host who never comes back -
+// a closed tab, a new participant id after storage is cleared - leaves the room
+// permanently unstartable for everyone still in it.
+function scheduleHostHandoff(slug) {
+  if (hostHandoffTimers.has(slug)) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    hostHandoffTimers.delete(slug);
+
+    const room = rooms.get(slug);
+    if (!room || isHostConnected(room)) {
+      return;
+    }
+
+    // Earliest arrival wins, so the handoff is predictable rather than
+    // whichever socket the Map happens to yield first.
+    const nextHost = Array.from(room.clients.values())
+      .filter(
+        (client) =>
+          client.authenticated &&
+          typeof client.participantId === "string" &&
+          client.participantId.length > 0,
+      )
+      .sort((left, right) => left.joinedAt - right.joinedAt)[0];
+
+    if (!nextHost || nextHost.participantId === room.hostParticipantId) {
+      return;
+    }
+
+    room.hostParticipantId = nextHost.participantId;
+    persistRoomSnapshot(slug, room);
+    broadcastRoomState(slug);
+  }, HOST_HANDOFF_GRACE_MS);
+
+  hostHandoffTimers.set(slug, timer);
+}
+
+// Called wherever the set of authenticated sockets changes: either the host is
+// present and keeps the role, or the grace clock starts.
+function syncHostPresence(slug, room) {
+  if (!room.hostParticipantId || isHostConnected(room)) {
+    clearHostHandoff(slug);
+    return;
+  }
+
+  scheduleHostHandoff(slug);
+}
+
 function getRoomClients(slug) {
   const room = rooms.get(slug);
   if (!room) {
@@ -1199,6 +1285,9 @@ function attachWsRuntime(server, options = {}) {
             room.clients.set(ws, entry);
             assignHostIfMissing(room, claimedId);
             room.participantIds.add(claimedId);
+            // Covers the stale case too: a host id loaded from Mongo whose
+            // owner never reconnects would otherwise hold the room forever.
+            syncHostPresence(slug, room);
 
             ws.send(
               JSON.stringify({ type: "auth-ok", participantId: claimedId }),
@@ -1452,9 +1541,14 @@ function attachWsRuntime(server, options = {}) {
       currentRoom.clients.delete(ws);
 
       if (currentRoom.clients.size === 0) {
+        // Nobody is left to promote, and the room may be evicted before anyone
+        // returns. Whoever authenticates next restarts the grace clock.
+        clearHostHandoff(slug);
         persistRoomSnapshot(slug, currentRoom);
         scheduleRoomCleanup(slug);
       } else {
+        syncHostPresence(slug, currentRoom);
+
         // Leaving lowers the quorum, so the players still here may already
         // have decided the match. Without this re-tally one person closing
         // their tab mid-match would stall the room until they came back.
