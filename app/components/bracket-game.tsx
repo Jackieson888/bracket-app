@@ -309,6 +309,12 @@ export default function BracketGame({
     right?.title,
   ]);
 
+  // Two beats, not one: the board mounts while the overlay is still fading,
+  // then the overlay unmounts once that fade is done.
+  const handleRevealBoard = useCallback(() => {
+    setBoardVisible(true);
+  }, []);
+
   const handleIntroComplete = useCallback(() => {
     setShowIntro(false);
     setBoardVisible(true);
@@ -601,6 +607,7 @@ export default function BracketGame({
             left={left}
             right={right}
             previousResult={previousResult}
+            onRevealBoard={handleRevealBoard}
             onComplete={handleIntroComplete}
           />
         ) : null}

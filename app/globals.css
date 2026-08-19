@@ -307,6 +307,13 @@ samp {
   animation: fadeIn 150ms ease-out both;
 }
 
+/* Held on screen for one beat after the sequence ends while the board plays
+   its own entrance underneath, so the two screens cross instead of cutting. */
+.bracket-intro-overlay--closing {
+  animation: introDissolve 260ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+
 .bracket-intro-stage {
   width: min(100%, 1100px);
   flex: 1 1 auto;
@@ -359,6 +366,9 @@ samp {
   display: flex;
   flex-direction: column;
   align-items: center;
+  /* Once the media frame hugs its own aspect it no longer fills the card, so
+     centre the media and title as a group rather than pinning them to the top. */
+  justify-content: center;
   gap: clamp(4px, 1vh, 10px);
   border-radius: 20px;
   overflow: hidden;
@@ -379,6 +389,16 @@ samp {
   background: rgba(0, 0, 0, 0.35);
 }
 
+/* Once the media's real shape is known the frame takes that shape instead of
+   stretching to the whole stage, so a 16:9 clip stops floating in a tall dark
+   box while it has the stage to itself. Falls back to the letterboxed frame
+   above whenever dimensions are unavailable. */
+.bracket-intro-media-frame[data-fit="known"] {
+  flex: 0 1 auto;
+  aspect-ratio: var(--intro-media-aspect);
+  max-height: 100%;
+}
+
 /* Applies to both the <video> clip and the <Image> still. Bounded by the
    frame it sits in rather than by the viewport, which is what stops the
    second clip being cut off at the bottom. */
@@ -389,6 +409,14 @@ samp {
   max-width: 100% !important;
   max-height: 100% !important;
   object-fit: contain;
+}
+
+/* The frame already matches the media's aspect, so filling it crops nothing
+   in the normal case - only when a very tall clip is clamped by max-height. */
+.bracket-intro-media-frame[data-fit="known"] .bracket-intro-media {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
 }
 
 .bracket-intro-card-title {
@@ -547,6 +575,17 @@ samp {
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes introDissolve {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.04);
   }
 }
 

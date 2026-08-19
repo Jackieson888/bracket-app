@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
 } from "react";
 import { Box, Typography } from "@mui/material";
 import Image from "next/image";
@@ -24,6 +25,8 @@ export type IntroItem = {
   title: string;
   mediaType?: "image" | "video";
   duration?: number | null;
+  width?: number;
+  height?: number;
 };
 
 type Phase = "result" | "card1" | "vs" | "card2" | "both" | "done";
@@ -42,6 +45,13 @@ const RESULT_MS = 2600;
 // Beat where both contenders sit level, after each has had the stage to
 // itself, so the pairing reads as a matchup before the board takes over.
 const BOTH_MS = 900;
+// How long a clip gets to actually start before the sequence gives up on it.
+// Without this a blocked or stalled clip holds the overlay for the full
+// MAX_INTRO_CLIP_MS cap on a frozen poster frame.
+const CLIP_START_TIMEOUT_MS = 4000;
+// Overlap between the overlay fading out and the board underneath animating
+// in, so the two screens cross rather than cut.
+const EXIT_MS = 260;
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
@@ -65,15 +75,23 @@ function IntroClip({
   active,
   showControls,
   onEnded,
+  onAspect,
 }: {
   item: IntroItem;
   active: boolean;
   showControls: boolean;
   onEnded: () => void;
+  onAspect: (aspect: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [soundBlocked, setSoundBlocked] = useState(false);
-  const src = videoSourceUrl(item.url) ?? item.url;
+  const transcodedSrc = videoSourceUrl(item.url) ?? item.url;
+  // Falls back to the stored original if the mp4 rendition will not load, so a
+  // missing or still-generating Cloudinary derivative costs a retry rather
+  // than the whole clip. Recording which rendition failed - rather than the
+  // url to use - means a new clip resets the choice without an effect.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const src = failedSrc === transcodedSrc ? item.url : transcodedSrc;
   const poster = videoPosterUrl(item) ?? undefined;
 
   // Keep the latest callback without making it an effect dependency — a new
@@ -97,25 +115,73 @@ function IntroClip({
     }
 
     let cancelled = false;
-    video.muted = false;
+    let started = false;
+    let audibleRefused = false;
 
-    void video.play().catch(() => {
-      if (cancelled) return;
-      // The browser blocked audible autoplay (no qualifying user gesture yet).
-      // Fall back to a muted play so the clip is still seen, and offer a tap
-      // to bring the sound back.
-      video.muted = true;
-      setSoundBlocked(true);
-      void video.play().catch(() => {
-        // Playback is unavailable entirely - do not strand the intro overlay.
-        if (!cancelled) onEndedRef.current();
-      });
-    });
+    const attempt = async () => {
+      // `canplay` can fire repeatedly; re-entering while the clip is already
+      // running would reset the muted state chosen below.
+      if (cancelled || !video.paused) {
+        return;
+      }
+
+      if (!audibleRefused) {
+        try {
+          video.muted = false;
+          await video.play();
+          return;
+        } catch {
+          // Audible autoplay refused: no qualifying user gesture yet.
+          audibleRefused = true;
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      try {
+        video.muted = true;
+        setSoundBlocked(true);
+        await video.play();
+      } catch {
+        // Not startable yet. `canplay` retries when data lands, and the
+        // watchdog moves the intro on if it never does.
+      }
+    };
+
+    const markStarted = () => {
+      started = true;
+    };
+
+    video.addEventListener("playing", markStarted);
+    video.addEventListener("canplay", attempt);
+    void attempt();
+
+    // A clip that never starts - blocked, stalled, or still transcoding -
+    // used to hold the overlay for the full 30s cap on a frozen poster.
+    const watchdog = window.setTimeout(() => {
+      if (!cancelled && !started) {
+        onEndedRef.current();
+      }
+    }, CLIP_START_TIMEOUT_MS);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(watchdog);
+      video.removeEventListener("playing", markStarted);
+      video.removeEventListener("canplay", attempt);
     };
   }, [src, active]);
+
+  const handleError = () => {
+    if (transcodedSrc && item.url && src !== item.url) {
+      setFailedSrc(transcodedSrc);
+      return;
+    }
+
+    onEndedRef.current();
+  };
 
   const handleUnmute = () => {
     const video = videoRef.current;
@@ -127,7 +193,16 @@ function IntroClip({
 
   return (
     <Box
-      sx={{ position: "relative", display: "flex", justifyContent: "center" }}
+      sx={{
+        position: "relative",
+        display: "flex",
+        justifyContent: "center",
+        // Fills the frame so the clip's own 100% sizing has something
+        // definite to resolve against.
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      }}
     >
       <video
         ref={videoRef}
@@ -138,8 +213,14 @@ function IntroClip({
         playsInline
         controls={showControls}
         aria-label={`Clip for ${item.title}`}
+        onLoadedMetadata={(event) => {
+          const { videoWidth, videoHeight } = event.currentTarget;
+          if (videoWidth > 0 && videoHeight > 0) {
+            onAspect(videoWidth / videoHeight);
+          }
+        }}
         onEnded={() => onEndedRef.current()}
-        onError={() => onEndedRef.current()}
+        onError={handleError}
       />
       {soundBlocked && active ? (
         <Box
@@ -187,16 +268,33 @@ function IntroCard({
   const isVideo = isVideoItem(item);
   const stillUrl = previewImageUrl(item);
 
+  // The frame takes the media's own shape, which is what stops a 16:9 clip
+  // floating in a tall dark box while it has the stage to itself. Uploads
+  // carry their dimensions; anything older measures itself once it loads.
+  const declaredAspect =
+    item.width && item.height ? item.width / item.height : null;
+  const [measuredAspect, setMeasuredAspect] = useState<number | null>(null);
+  const aspect = declaredAspect ?? measuredAspect;
+
   return (
     <Box className={className} data-minimized={minimized ? "true" : undefined}>
       <Box className="bracket-intro-card-inner">
-        <Box className="bracket-intro-media-frame">
+        <Box
+          className="bracket-intro-media-frame"
+          data-fit={aspect ? "known" : undefined}
+          style={
+            aspect
+              ? ({ "--intro-media-aspect": `${aspect}` } as CSSProperties)
+              : undefined
+          }
+        >
           {isVideo ? (
             <IntroClip
               item={item}
               active={active}
               showControls={showControls}
               onEnded={onClipEnded}
+              onAspect={setMeasuredAspect}
             />
           ) : stillUrl ? (
             <Image
@@ -206,6 +304,12 @@ function IntroCard({
               width={980}
               height={620}
               sizes="(max-width: 640px) 100vw, 980px"
+              onLoad={(event) => {
+                const { naturalWidth, naturalHeight } = event.currentTarget;
+                if (naturalWidth > 0 && naturalHeight > 0) {
+                  setMeasuredAspect(naturalWidth / naturalHeight);
+                }
+              }}
             />
           ) : null}
         </Box>
@@ -246,11 +350,15 @@ export default function MatchIntro({
   left,
   right,
   previousResult,
+  onRevealBoard,
   onComplete,
 }: {
   left: IntroItem;
   right?: IntroItem | null;
   previousResult?: MatchResult | null;
+  // Fires as the overlay starts fading, so the board mounts and plays its own
+  // entrance underneath rather than appearing after a hard cut.
+  onRevealBoard: () => void;
   onComplete: () => void;
 }) {
   // The clip is the contender here, not decoration, so a reduced-motion
@@ -278,10 +386,27 @@ export default function MatchIntro({
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
+  const onRevealBoardRef = useRef(onRevealBoard);
+  useEffect(() => {
+    onRevealBoardRef.current = onRevealBoard;
+  }, [onRevealBoard]);
+
   useEffect(() => {
     if (phase === "done") {
-      onCompleteRef.current();
-      return;
+      // Reveal first, unmount after the fade: for one beat the board is
+      // animating in underneath a dissolving overlay.
+      onRevealBoardRef.current();
+
+      if (reducedMotion) {
+        onCompleteRef.current();
+        return;
+      }
+
+      const exitTimer = window.setTimeout(
+        () => onCompleteRef.current(),
+        EXIT_MS,
+      );
+      return () => window.clearTimeout(exitTimer);
     }
 
     if (phase === "result") {
@@ -306,35 +431,40 @@ export default function MatchIntro({
 
     const timer = window.setTimeout(advance, duration);
     return () => window.clearTimeout(timer);
-  }, [phase, left, right, advance]);
+  }, [phase, left, right, advance, reducedMotion]);
 
-  if (phase === "done") {
-    return null;
-  }
+  const closing = phase === "done";
+  // The overlay stays mounted through its fade, so the stage holds the final
+  // "both contenders" frame rather than dropping the second card mid-dissolve.
+  const stagePhase: Phase = closing ? "both" : phase;
 
   return (
     // A plain container, not role="button": it holds the unmute control and
     // (under reduced motion) native video controls, and nesting interactive
     // elements inside a button role makes them unreachable. Click-to-skip
     // stays for pointers; the SKIP button below is the accessible path.
-    <Box className="bracket-intro-overlay" onClick={skip}>
+    <Box
+      className={`bracket-intro-overlay${closing ? " bracket-intro-overlay--closing" : ""}`}
+      aria-hidden={closing || undefined}
+      onClick={closing ? undefined : skip}
+    >
       <Box className="bracket-intro-stage">
-        {phase === "result" && previousResult ? (
+        {stagePhase === "result" && previousResult ? (
           <ResultReveal result={previousResult} />
         ) : null}
 
-        {phase !== "result" ? (
+        {stagePhase !== "result" ? (
           <IntroCard
             item={left}
-            active={phase === "card1"}
-            minimized={phase === "card2"}
+            active={stagePhase === "card1"}
+            minimized={stagePhase === "card2"}
             showControls={reducedMotion}
-            onClipEnded={phase === "card1" ? advance : noop}
+            onClipEnded={stagePhase === "card1" ? advance : noop}
             className="bracket-intro-card bracket-intro-card--card1"
           />
         ) : null}
 
-        {phase !== "card1" && phase !== "result" ? (
+        {stagePhase !== "card1" && stagePhase !== "result" ? (
           <Box className="bracket-intro-vs">
             <Typography
               sx={{
@@ -348,12 +478,12 @@ export default function MatchIntro({
           </Box>
         ) : null}
 
-        {(phase === "card2" || phase === "both") && right ? (
+        {(stagePhase === "card2" || stagePhase === "both") && right ? (
           <IntroCard
             item={right}
-            active={phase === "card2"}
+            active={stagePhase === "card2"}
             showControls={reducedMotion}
-            onClipEnded={phase === "card2" ? advance : noop}
+            onClipEnded={stagePhase === "card2" ? advance : noop}
             className="bracket-intro-card bracket-intro-card--card2"
           />
         ) : null}
