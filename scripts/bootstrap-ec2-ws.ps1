@@ -77,22 +77,35 @@ git config --global --add safe.directory "$APP_DIR"
 # deploy a silent no-op: dependencies reinstalled and the service restarted,
 # but the code never moved. Adopt it as a checkout instead. Untracked files
 # (node_modules, env files) survive; tracked files are replaced by the branch.
-if [ ! -d "$APP_DIR/.git" ]; then
+# Tests the repository rather than the directory: this box had a .git that git
+# itself rejected, which the directory check called a checkout.
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
   if [ -z "$REPO_URL" ]; then
     echo "$APP_DIR is not a git checkout and RepoUrl was not provided."
     echo "Rerun with -RepoUrl <git_url> so the deploy can update the code."
     exit 1
   fi
 
-  echo "       $APP_DIR is not a git checkout - adopting it as one."
+  echo "       $APP_DIR is not a usable checkout - adopting it as one."
   git init
-  git remote add origin "$REPO_URL"
 fi
 
-git remote set-url origin "${REPO_URL:-$(git remote get-url origin)}"
-git fetch --prune origin "$BRANCH"
-git checkout -B "$BRANCH" "origin/$BRANCH"
+if [ -n "$REPO_URL" ]; then
+  if git remote get-url origin > /dev/null 2>&1; then
+    git remote set-url origin "$REPO_URL"
+  else
+    git remote add origin "$REPO_URL"
+  fi
+fi
+
+git fetch --prune origin
+
+# reset before checkout, not after. In an adopted directory every file is
+# untracked against the fresh index, and checkout refuses to overwrite
+# untracked files - reset has no such check, and leaves node_modules and
+# other ignored files alone.
 git reset --hard "origin/$BRANCH"
+git checkout -B "$BRANCH" "origin/$BRANCH"
 
 echo "       Now at: $(git log --oneline -1)"
 
