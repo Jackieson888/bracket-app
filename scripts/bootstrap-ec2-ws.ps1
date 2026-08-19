@@ -1,12 +1,12 @@
 param(
   [string]$KeyPath = "C:\Users\jscha\tvt-game-app\TVT_WS_GAME_KEY.pem",
   [Alias("Host")]
-  [string]$Ec2Host = "ec2-44-251-123-224.us-west-2.compute.amazonaws.com",
+  [string]$Ec2Host = "ws.tvt-game.app",
   [string]$RemoteUser = "ubuntu",
   [string]$AppDir = "/home/ubuntu/tvt-game-app",
   [string]$NodeVersion = "20",
-  [string]$RepoUrl = "",
-  [string]$Branch = "main",
+  [string]$RepoUrl = "https://github.com/Jackieson888/bracket-app.git",
+  [string]$Branch = "master",
   [string]$LocalEnvFile = ".\realtime-runtime\.env.production"
 )
 
@@ -70,15 +70,31 @@ fi
 
 cd "$APP_DIR"
 
-if [ -d "$APP_DIR/.git" ]; then
-  echo "[4/10] Updating repository checkout..."
-  git config --global --add safe.directory "$APP_DIR"
-  git fetch --all --prune
-  git checkout "$BRANCH"
-  git pull --ff-only origin "$BRANCH"
-else
-  echo "[4/10] Skipping git update because $APP_DIR is not a git checkout."
+echo "[4/10] Updating repository checkout..."
+git config --global --add safe.directory "$APP_DIR"
+
+# A plain directory here used to be skipped with a warning, which made every
+# deploy a silent no-op: dependencies reinstalled and the service restarted,
+# but the code never moved. Adopt it as a checkout instead. Untracked files
+# (node_modules, env files) survive; tracked files are replaced by the branch.
+if [ ! -d "$APP_DIR/.git" ]; then
+  if [ -z "$REPO_URL" ]; then
+    echo "$APP_DIR is not a git checkout and RepoUrl was not provided."
+    echo "Rerun with -RepoUrl <git_url> so the deploy can update the code."
+    exit 1
+  fi
+
+  echo "       $APP_DIR is not a git checkout - adopting it as one."
+  git init
+  git remote add origin "$REPO_URL"
 fi
+
+git remote set-url origin "${REPO_URL:-$(git remote get-url origin)}"
+git fetch --prune origin "$BRANCH"
+git checkout -B "$BRANCH" "origin/$BRANCH"
+git reset --hard "origin/$BRANCH"
+
+echo "       Now at: $(git log --oneline -1)"
 
 echo "[5/10] Installing runtime environment file..."
 if [ ! -f "$REMOTE_ENV_PATH" ]; then
@@ -137,6 +153,10 @@ for i in {1..10}; do
 
   sleep 1
 done
+
+# The health check only proves a process is listening, not that it is running
+# the code you just pushed. Print what actually shipped.
+echo "Deployed commit: $(git -C "$APP_DIR" log --oneline -1)"
 
 echo "Done."
 '@
