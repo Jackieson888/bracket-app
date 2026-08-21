@@ -31,8 +31,16 @@ export type IntroItem = {
 
 type Phase = "result" | "card1" | "vs" | "card2" | "both" | "done";
 
+// The server's match history only stores an id and a title per contender, so
+// the board fills the media back in from the bracket before handing the result
+// over - the reveal is meant to show the clip that won, not just its name.
 export type MatchResult = {
-  items: Array<{ id: string; title: string }>;
+  items: Array<
+    { id: string; title: string } & Pick<
+      IntroItem,
+      "url" | "mediaType" | "duration" | "width" | "height"
+    >
+  >;
   voteCounts: Record<string, number>;
   winnerItemId: string;
 };
@@ -323,12 +331,85 @@ function IntroCard({
 
 const noop = () => {};
 
+// The winning clip, replayed for the couple of seconds the result is up.
+// Muted and looping: the next contender's clip starts the moment this ends, so
+// two soundtracks must never overlap, and muted playback is the only kind that
+// starts reliably without a fresh user gesture.
+function ResultClip({ item }: { item: MatchResult["items"][number] }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  // The clip still plays - it is the result, not decoration - but it plays
+  // once instead of looping for anyone who asked for less movement.
+  const reducedMotion = usePrefersReducedMotion();
+  const isVideo = isVideoItem(item);
+  const still = previewImageUrl(item);
+  const src = isVideo ? (videoSourceUrl(item.url) ?? item.url) : null;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    void video.play().catch(() => {
+      // Blocked or still transcoding: the poster frame carries the moment.
+    });
+  }, [src]);
+
+  if (isVideo && src) {
+    return (
+      <video
+        ref={videoRef}
+        className="bracket-reveal-media"
+        src={src}
+        poster={still ?? undefined}
+        muted
+        loop={!reducedMotion}
+        controls={reducedMotion}
+        playsInline
+        preload="auto"
+        aria-label={`Winning clip: ${item.title}`}
+      />
+    );
+  }
+
+  if (!still) {
+    return null;
+  }
+
+  return (
+    <Image
+      className="bracket-reveal-media"
+      src={still}
+      alt={item.title}
+      width={item.width ?? 640}
+      height={item.height ?? 360}
+      sizes="(max-width: 640px) 100vw, 520px"
+    />
+  );
+}
+
 function ResultReveal({ result }: { result: MatchResult }) {
   const total = Object.values(result.voteCounts).reduce((a, b) => a + b, 0);
+  const winner = result.items.find((item) => item.id === result.winnerItemId);
 
   return (
     <Box className="bracket-reveal">
       <Typography className="bracket-reveal-label">LAST MATCH</Typography>
+      {winner?.url ? (
+        <Box className="bracket-reveal-stage">
+          <ResultClip item={winner} />
+          <Box className="bracket-reveal-winner-tag">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path
+                d="m5 13 4 4L19 7"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            WINNER
+          </Box>
+        </Box>
+      ) : null}
       {result.items.map((item) => {
         const count = result.voteCounts[item.id] ?? 0;
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
