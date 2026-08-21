@@ -8,12 +8,12 @@ import {
   joinSession,
   makeItems,
   Player,
+  probeRawSocket,
   scenario,
   sleep,
   waitForAll,
   waitForSnapshot,
 } from "../lib/harness.mjs";
-import WebSocket from "ws";
 
 scenario(
   "late-join-lockout",
@@ -61,30 +61,10 @@ scenario(
     );
 
     // A stranger opening the room URL straight from a shared link.
-    const locked = await new Promise((resolve) => {
-      const ws = new WebSocket(
-        `${config.wsUrl}?slug=${slug}&participantId=qa-ws-stranger-${Date.now()}&displayName=Stranger`,
-        { headers: { "x-forwarded-for": "10.77.0.9" } },
-      );
-      const seen = [];
-      const finish = (closed) => resolve({ seen, closed });
-      const timer = setTimeout(() => {
-        ws.close();
-        finish(false);
-      }, 4000);
-      ws.on("message", (raw) => {
-        try {
-          seen.push(JSON.parse(raw.toString()));
-        } catch {
-          seen.push({ type: "parse-error" });
-        }
-      });
-      ws.on("close", () => {
-        clearTimeout(timer);
-        finish(true);
-      });
-      ws.on("error", () => {});
-    });
+    const locked = await probeRawSocket(
+      `${config.wsUrl}?slug=${slug}&participantId=qa-ws-stranger-${Date.now()}&displayName=Stranger`,
+      { headers: { "x-forwarded-for": "10.77.0.9" }, timeoutMs: 4000 },
+    );
     t.check(
       "late-join-socket-locked-out",
       locked.seen.some((message) => message?.type === "room-locked") &&

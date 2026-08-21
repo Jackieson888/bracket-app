@@ -18,6 +18,15 @@ export function toPublicUser(user: AuthUser): PublicUser {
   };
 }
 
+// A bracket/session document's `user` field is already a PublicUser (it went
+// through toPublicUser once when written). Re-derive it the same way rather
+// than trusting it as-is, guarding against a stored guest marker.
+export function toPublicUserOrGuest(
+  user: (AuthUser & { guest?: true }) | null | undefined,
+): PublicUser {
+  return toPublicUser(user && !user.guest ? user : null);
+}
+
 export type ParticipantRecord = {
   participantId: string;
   displayName?: string;

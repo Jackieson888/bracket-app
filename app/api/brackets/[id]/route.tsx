@@ -1,7 +1,7 @@
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 import { NextRequest } from "next/server";
-import { toPublicUser } from "@/lib/user";
+import { toPublicUserOrGuest } from "@/lib/user";
 
 interface Params {
   id: string;
@@ -22,8 +22,7 @@ export async function GET(
       return Response.json({ error: "Invalid bracket id" }, { status: 400 });
     }
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const brackets = db.collection("brackets");
 
     const result = await brackets.findOne({
@@ -36,9 +35,7 @@ export async function GET(
 
     return Response.json({
       ...result,
-      user: toPublicUser(
-        result.user && !result.user.guest ? result.user : null,
-      ),
+      user: toPublicUserOrGuest(result.user),
     });
   } catch (err) {
     console.error("Error getting bracket:", err);

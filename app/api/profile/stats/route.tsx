@@ -1,4 +1,4 @@
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
 import type { GameResultDoc } from "@/lib/game-results";
 
@@ -16,8 +16,7 @@ export async function GET(): Promise<Response> {
       return Response.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const gameResults = db.collection("gameResults");
 
     const [gamesHosted, gamesPlayed, recentGames] = await Promise.all([

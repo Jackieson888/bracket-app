@@ -53,3 +53,5 @@ amplifyconfiguration*
 # qa suite artifacts
 /qa/output/
 /qa/tmp/
+/qa/*-output*.json
+/qa/*-output*.log

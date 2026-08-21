@@ -1,6 +1,5 @@
 // The two clocks the room runs on: the per-match vote deadline, and the TTL
 // that eventually retires the room entirely.
-import WebSocket from "ws";
 import {
   api,
   config,
@@ -8,6 +7,7 @@ import {
   joinSession,
   makeItems,
   Player,
+  probeRawSocket,
   scenario,
   sleep,
   waitForAll,
@@ -128,29 +128,10 @@ scenario(
     );
 
     const staleSocketId = `qa-stale-ws-${Date.now()}`;
-    const socket = await new Promise((resolve) => {
-      const ws = new WebSocket(
-        `${config.wsUrl}?slug=${slug}&participantId=${staleSocketId}&displayName=TooLate`,
-        { headers: { "x-forwarded-for": "10.88.0.3" } },
-      );
-      const seen = [];
-      const timer = setTimeout(() => {
-        ws.close();
-        resolve({ seen, closed: false });
-      }, 5000);
-      ws.on("message", (raw) => {
-        try {
-          seen.push(JSON.parse(raw.toString()));
-        } catch {
-          seen.push({ type: "parse-error" });
-        }
-      });
-      ws.on("close", () => {
-        clearTimeout(timer);
-        resolve({ seen, closed: true });
-      });
-      ws.on("error", () => {});
-    });
+    const socket = await probeRawSocket(
+      `${config.wsUrl}?slug=${slug}&participantId=${staleSocketId}&displayName=TooLate`,
+      { headers: { "x-forwarded-for": "10.88.0.3" }, timeoutMs: 5000 },
+    );
 
     const served = socket.seen.find((message) => message?.type === "room-state");
 

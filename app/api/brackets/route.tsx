@@ -1,6 +1,6 @@
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
-import { toPublicUser } from "@/lib/user";
+import { toPublicUser, toPublicUserOrGuest } from "@/lib/user";
 import { summarizeGameResults, type GameResultDoc } from "@/lib/game-results";
 
 const MAX_BRACKETS_RETURNED = 5;
@@ -10,8 +10,7 @@ export async function POST(req: Request) {
     const session = await auth0.getSession();
     const body = await req.json();
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const brackets = db.collection("brackets");
 
     const doc = {
@@ -32,8 +31,7 @@ export async function POST(req: Request) {
 
 export async function GET(req: Request) {
   try {
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const brackets = db.collection("brackets");
 
     const query = req.url.includes("?") ? new URL(req.url).searchParams : null;
@@ -73,9 +71,7 @@ export async function GET(req: Request) {
 
       return {
         ...bracket,
-        user: toPublicUser(
-          bracket.user && !bracket.user.guest ? bracket.user : null,
-        ),
+        user: toPublicUserOrGuest(bracket.user),
         stats: summary
           ? {
               playCount: summary.totalPlays,

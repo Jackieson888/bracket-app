@@ -156,18 +156,18 @@ room's roster must not be able to get in through either integration point:
   - Re-run with minimal 4-item deterministic scenario to isolate logic
 
 ## Automated Runner
-[qa/multiplayer-qa-runner.mjs](../../../qa/multiplayer-qa-runner.mjs) is a
-Node script that exercises this workflow end-to-end against a running local
-server (`npm run dev`, which serves both Next.js and the WebSocket runtime on
-`http://localhost:3000`): create bracket → select/play it → join by code →
-host-gated start → late-join lockout (WS + REST) → real-time voting/round
-progression → full disconnect/reconnect → winner correctness → non-host
-rematch denial → host "Play Again" resetting the same bracket for everyone.
-Run it with `node qa/multiplayer-qa-runner.mjs`, capture stdout (JSON) to a
-timestamped file under `qa/`, and treat any `pass: false` entry in `checks`
-as a defect to map in the Issue Map. It does not cover the "DIFFERENT
-BRACKET" navigation (pure client-side link to `/play`) or visual/UI
-rendering — verify those manually in a browser.
+[qa/run-qa.mjs](../../../qa/run-qa.mjs) exercises this workflow end-to-end
+against a running local server (`npm run dev`, which serves both Next.js and
+the WebSocket runtime on `http://localhost:3000`) via the scenario suite in
+[qa/scenarios/](../../../qa/scenarios/): create bracket → select/play it →
+join by code → host-gated start → late-join lockout (WS + REST) → real-time
+voting/round progression → full disconnect/reconnect → winner correctness →
+non-host rematch denial → host "Play Again" resetting the same bracket for
+everyone. Run it with `npm run qa` (see [qa/README.md](../../../qa/README.md)
+for scenario-by-scenario details), and treat any failing check as a defect to
+map in the Issue Map. It does not cover the "DIFFERENT BRACKET" navigation
+(pure client-side link to `/play`) or visual/UI rendering — verify those
+manually in a browser.
 
 ## Completion Criteria
 - All invited players are confirmed in the same session

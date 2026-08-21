@@ -33,6 +33,10 @@ const INTRO_VS_MS = 250;
 const INTRO_BUFFER_MS = 1500;
 
 const matchTimers = new Map();
+// Waiting on the last player to reach the board is bounded: a phone that
+// never reports in must not hold the vote window closed for everyone else.
+const READY_GRACE_MS = Number(process.env.READY_GRACE_MS || 20000);
+const readyTimers = new Map();
 
 let mongoClientPromise;
 
@@ -77,6 +81,7 @@ async function loadPersistedRoom(slug) {
             expiresAt: 1,
             createdAt: 1,
             hostParticipantId: 1,
+            hostClaimParticipantId: 1,
           },
         },
       ),
@@ -327,6 +332,12 @@ function scheduleRoomCleanup(slug) {
     }
 
     clearHostHandoff(slug);
+    // These fire against whatever `rooms` holds when they go off. Left
+    // running, an evicted room's match timer force-advances the *rebuilt*
+    // room minutes later - skipping a match the returning players were in
+    // the middle of voting on.
+    clearMatchTimer(slug);
+    clearReadyTimer(slug);
     rooms.delete(slug);
   }, ROOM_IDLE_TTL_MS);
 
@@ -405,6 +416,7 @@ function scheduleRoomExpiration(slug) {
 
 function expireRoom(slug) {
   clearMatchTimer(slug);
+  clearReadyTimer(slug);
   const room = rooms.get(slug);
   if (!room) {
     return;
@@ -458,7 +470,13 @@ async function getOrCreateRoom(slug) {
           ? persisted.participantIds
           : persistedLookupIds,
       ),
-      hostParticipantId: persisted?.hostParticipantId ?? null,
+      // Who made the room, as recorded by the join endpoint when they
+      // redeemed their claim. Read-only here.
+      creatorParticipantId: persisted?.hostClaimParticipantId ?? null,
+      hostParticipantId:
+        persisted?.hostClaimParticipantId ?? persisted?.hostParticipantId ?? null,
+      // matchKey -> Set(participantId) of players whose board is up for it.
+      readyByMatch: new Map(),
       roomStatus: persisted?.roomStatus || "waiting",
       gameStateVersion: Number(persisted?.gameStateVersion ?? 0),
       roomSnapshotVersion: Number(persisted?.roomSnapshotVersion ?? 0),
@@ -508,39 +526,67 @@ async function getOrCreateRoom(slug) {
 // broadcast room-wide) so it proves nothing on its own. The token minted by
 // POST /api/sessions/[slug] is the actual credential and is checked here
 // before a socket is allowed to vote or start the game.
+// Returns the verification result together with the room's persisted host,
+// which the join endpoint may have set moments ago - after this room was
+// already built in memory. Same read either way, so the host lookup is free.
 async function verifyParticipantToken(slug, participantId, token) {
+  const denied = { ok: false, hostParticipantId: null, creatorParticipantId: null };
+
   if (!participantId || typeof token !== "string" || token.length === 0) {
-    return false;
+    return denied;
   }
 
   const projectionKey = `participantLookup.${participantId}.participantToken`;
 
   try {
     const session = await withSessionsCollection((sessions) =>
-      sessions.findOne({ slug }, { projection: { [projectionKey]: 1 } }),
+      sessions.findOne(
+        { slug },
+        {
+          projection: {
+            [projectionKey]: 1,
+            hostParticipantId: 1,
+            hostClaimParticipantId: 1,
+          },
+        },
+      ),
     );
 
     // A null result means Mongo is unreachable or unconfigured. Sessions can
     // only exist in Mongo, so there is no legitimate client to admit here.
     if (!session) {
-      return false;
+      return denied;
     }
+
+    const hostParticipantId =
+      typeof session.hostParticipantId === "string" && session.hostParticipantId
+        ? session.hostParticipantId
+        : null;
+    const creatorParticipantId =
+      typeof session.hostClaimParticipantId === "string" &&
+      session.hostClaimParticipantId
+        ? session.hostClaimParticipantId
+        : null;
 
     const stored = session?.participantLookup?.[participantId]?.participantToken;
     if (typeof stored !== "string" || stored.length === 0) {
-      return false;
+      return { ok: false, hostParticipantId, creatorParticipantId };
     }
 
     const storedBuffer = Buffer.from(stored, "utf8");
     const providedBuffer = Buffer.from(token, "utf8");
     if (storedBuffer.length !== providedBuffer.length) {
-      return false;
+      return { ok: false, hostParticipantId, creatorParticipantId };
     }
 
-    return timingSafeEqual(storedBuffer, providedBuffer);
+    return {
+      ok: timingSafeEqual(storedBuffer, providedBuffer),
+      hostParticipantId,
+      creatorParticipantId,
+    };
   } catch (error) {
     console.error("Failed to verify participant token:", error);
-    return false;
+    return denied;
   }
 }
 
@@ -593,6 +639,52 @@ function getMatchWindow(currentRoundItems, matchIndex, matchSize) {
   };
 }
 
+// After a match resolves to winnerValue, folds it into nextRoundWinners and
+// either finishes the game, advances to the next round, or reports that the
+// round isn't complete yet (the caller is then responsible for moving on to
+// the next match within the round). Mutates room.gameState directly. Shared
+// by normalizeBracketProgression's bye-skipping loop and
+// tallyAndAdvanceMatch's live-vote resolution.
+function applyRoundWinner(room, { matchSize, currentRoundItems, nextRoundWinners, winnerValue }) {
+  const totalMatches = Math.ceil(currentRoundItems.length / matchSize);
+  const completedMatches = nextRoundWinners.filter(Boolean).length;
+
+  if (completedMatches < totalMatches) {
+    return false;
+  }
+
+  const nextRoundItems = nextRoundWinners.filter(Boolean);
+
+  if (nextRoundItems.length <= 1) {
+    room.gameState = {
+      ...room.gameState,
+      currentRoundItems: nextRoundItems,
+      currentMatch: 0,
+      votesByMatch: {},
+      pendingVoteCount: 0,
+      requiredVoteCount: 0,
+      roundWinners: [],
+      lastWinner: winnerValue,
+      winner: nextRoundItems[0] ?? null,
+    };
+    room.roomStatus = "completed";
+  } else {
+    room.gameState = {
+      ...room.gameState,
+      round: (room.gameState.round ?? 0) + 1,
+      currentMatch: 0,
+      currentRoundItems: nextRoundItems,
+      votesByMatch: {},
+      pendingVoteCount: 0,
+      requiredVoteCount: 0,
+      roundWinners: [],
+      lastWinner: winnerValue,
+    };
+  }
+
+  return true;
+}
+
 function normalizeBracketProgression(room) {
   if (!room?.gameState) {
     return false;
@@ -624,7 +716,7 @@ function normalizeBracketProgression(room) {
     const round = room.gameState.round ?? 0;
     const matchKey = getMatchKey(round, match);
     const matchVotes = room.gameState.votesByMatch?.[matchKey] ?? {};
-    const { startIndex, items: matchItems } = getMatchWindow(
+    const { items: matchItems } = getMatchWindow(
       currentRoundItems,
       match,
       matchSize,
@@ -652,43 +744,18 @@ function normalizeBracketProgression(room) {
         },
       ];
 
-      const totalMatches = Math.ceil(currentRoundItems.length / matchSize);
-      const completedMatches = nextRoundWinners.filter(Boolean).length;
-
       room.gameState.roundWinners = nextRoundWinners;
       room.gameState.pendingVoteCount = 0;
       room.gameState.requiredVoteCount = 0;
 
-      if (completedMatches >= totalMatches) {
-        const nextRoundItems = nextRoundWinners.filter(Boolean);
+      const roundFinished = applyRoundWinner(room, {
+        matchSize,
+        currentRoundItems,
+        nextRoundWinners,
+        winnerValue: matchItems[0] ?? null,
+      });
 
-        if (nextRoundItems.length <= 1) {
-          room.gameState = {
-            ...room.gameState,
-            currentRoundItems: nextRoundItems,
-            currentMatch: 0,
-            votesByMatch: {},
-            pendingVoteCount: 0,
-            requiredVoteCount: 0,
-            roundWinners: [],
-            lastWinner: matchItems[0] ?? null,
-            winner: nextRoundItems[0] ?? null,
-          };
-          room.roomStatus = "completed";
-        } else {
-          room.gameState = {
-            ...room.gameState,
-            round: (room.gameState.round ?? 0) + 1,
-            currentMatch: 0,
-            currentRoundItems: nextRoundItems,
-            votesByMatch: {},
-            pendingVoteCount: 0,
-            requiredVoteCount: 0,
-            roundWinners: [],
-            lastWinner: matchItems[0] ?? null,
-          };
-        }
-      } else {
+      if (!roundFinished) {
         room.gameState.currentMatch = match + 1;
       }
 
@@ -707,13 +774,7 @@ function normalizeBracketProgression(room) {
 }
 
 function getActiveVoterCount(room) {
-  const voters = new Set();
-  room.clients.forEach((client) => {
-    if (client.authenticated && client.participantId) {
-      voters.add(client.participantId);
-    }
-  });
-  return voters.size;
+  return getExpectedReadyIds(room).size;
 }
 
 // Tallies the live match and advances the bracket if the quorum is met.
@@ -801,47 +862,19 @@ function tallyAndAdvanceMatch(slug, room, options = {}) {
       },
     ];
 
-    const totalMatches = Math.ceil(
-      currentRoundItems.length / matchSize,
-    );
-    const completedMatches = nextRoundWinners.filter(Boolean).length;
-
     room.gameState.roundWinners = nextRoundWinners;
     room.gameState.pendingVoteCount = 0;
     room.gameState.lastWinner = winnerItem;
 
-    if (completedMatches >= totalMatches) {
-      const nextRoundItems = nextRoundWinners.filter(Boolean);
+    const roundFinished = applyRoundWinner(room, {
+      matchSize,
+      currentRoundItems,
+      nextRoundWinners,
+      winnerValue: winnerItem,
+    });
 
-      if (nextRoundItems.length <= 1) {
-        room.gameState = {
-          ...room.gameState,
-          currentRoundItems: nextRoundItems,
-          currentMatch: 0,
-          votesByMatch: {},
-          pendingVoteCount: 0,
-          requiredVoteCount: 0,
-          roundWinners: [],
-          lastWinner: winnerItem,
-          winner: nextRoundItems[0] ?? null,
-        };
-        room.roomStatus = "completed";
-      } else {
-        room.gameState = {
-          ...room.gameState,
-          round: (room.gameState.round ?? 0) + 1,
-          currentMatch: 0,
-          currentRoundItems: nextRoundItems,
-          votesByMatch: {},
-          pendingVoteCount: 0,
-          requiredVoteCount: 0,
-          roundWinners: [],
-          lastWinner: winnerItem,
-        };
-      }
-    } else {
-      room.gameState.currentMatch =
-        (room.gameState.currentMatch ?? 0) + 1;
+    if (!roundFinished) {
+      room.gameState.currentMatch = (room.gameState.currentMatch ?? 0) + 1;
     }
 
     normalizeBracketProgression(room);
@@ -851,10 +884,14 @@ function tallyAndAdvanceMatch(slug, room, options = {}) {
     // target until the first vote of the new match arrives.
     if ((room.gameState.currentRoundItems ?? []).length > 1) {
       room.gameState.requiredVoteCount = Math.max(1, getActiveVoterCount(room));
-      armMatchTimer(slug, room);
+      // A new matchup means a new intro on every client, so the countdown
+      // waits for them again rather than carrying over from the last one.
+      armMatchWhenReady(slug, room);
     } else {
       clearMatchTimer(slug);
+      clearReadyTimer(slug);
       room.gameState.matchDeadline = null;
+      room.gameState.awaitingPlayers = false;
     }
   }
 
@@ -880,6 +917,184 @@ function estimateIntroMs(matchItems) {
   );
 }
 
+// The readiness barrier.
+//
+// The vote window used to start the moment a match became current, sized by a
+// server-side guess at how long the intro would take on the client. Every
+// player who took longer than the guess - a slow phone, a cold video, a tab
+// that was backgrounded - lost part of their window, and a player who took
+// much longer could arrive after the match had already been settled by the
+// others. Their vote was simply never counted.
+//
+// So the window no longer starts on a guess. Each client reports when its
+// board is actually up for a given match, and the countdown starts when the
+// last one checks in. READY_GRACE_MS bounds the wait so one client that never
+// reports cannot hold the room.
+
+function clearReadyTimer(slug) {
+  const timer = readyTimers.get(slug);
+  if (timer) {
+    clearTimeout(timer);
+    readyTimers.delete(slug);
+  }
+}
+
+// Who the room is waiting on: every verified socket currently connected.
+// Deliberately the same set getActiveVoterCount derives the quorum from, so
+// the room never waits on someone whose vote it would not require anyway.
+function getExpectedReadyIds(room) {
+  const ids = new Set();
+  room.clients.forEach((client) => {
+    if (client.authenticated && client.participantId) {
+      ids.add(client.participantId);
+    }
+  });
+  return ids;
+}
+
+function getReadySet(room, matchKey) {
+  if (!room.readyByMatch) {
+    room.readyByMatch = new Map();
+  }
+  let set = room.readyByMatch.get(matchKey);
+  if (!set) {
+    set = new Set();
+    room.readyByMatch.set(matchKey, set);
+  }
+  return set;
+}
+
+function currentMatchKey(room) {
+  return getMatchKey(room.gameState?.round ?? 0, room.gameState?.currentMatch ?? 0);
+}
+
+// Publishes the barrier so the board can say who it is waiting for instead of
+// showing a countdown that has not started.
+function publishReadyState(room) {
+  if (!room.gameState) {
+    return;
+  }
+
+  const expected = getExpectedReadyIds(room);
+  const ready = getReadySet(room, currentMatchKey(room));
+  let readyCount = 0;
+  expected.forEach((id) => {
+    if (ready.has(id)) readyCount += 1;
+  });
+
+  room.gameState.readyParticipantCount = readyCount;
+  room.gameState.requiredReadyCount = expected.size;
+}
+
+// True when everyone the room is waiting on has reported in. An empty room
+// (everybody dropped mid-intro) counts as ready so the match can still settle.
+function everyoneReady(room) {
+  const expected = getExpectedReadyIds(room);
+  if (expected.size === 0) {
+    return true;
+  }
+  const ready = getReadySet(room, currentMatchKey(room));
+  for (const id of expected) {
+    if (!ready.has(id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Called wherever a new match becomes current. Holds the countdown closed and
+// starts the bounded fallback clock.
+function armMatchWhenReady(slug, room) {
+  clearMatchTimer(slug);
+  clearReadyTimer(slug);
+
+  if (!room?.gameState || room.roomStatus !== "started") {
+    return;
+  }
+
+  const currentRoundItems = room.gameState.currentRoundItems ?? [];
+  if (currentRoundItems.length <= 1) {
+    room.gameState.matchDeadline = null;
+    room.gameState.awaitingPlayers = false;
+    return;
+  }
+
+  room.gameState.matchDeadline = null;
+  room.gameState.awaitingPlayers = true;
+  publishReadyState(room);
+
+  // Already there - a single player whose board was up before the advance, or
+  // a room that emptied out - so there is nothing to wait for.
+  if (everyoneReady(room)) {
+    armMatchTimer(slug, room, { introConfirmed: true });
+    return;
+  }
+
+  const { items: matchItems } = getMatchWindow(
+    currentRoundItems,
+    room.gameState.currentMatch ?? 0,
+    getMatchSize(room),
+  );
+
+  // The fallback has to outlast the intro itself, or it would fire while
+  // every client is still legitimately playing the clips.
+  const graceMs = estimateIntroMs(matchItems) + READY_GRACE_MS;
+  readyTimers.set(
+    slug,
+    setTimeout(() => {
+      readyTimers.delete(slug);
+      const liveRoom = rooms.get(slug);
+      if (!liveRoom || liveRoom.roomStatus !== "started") {
+        return;
+      }
+
+      armMatchTimer(slug, liveRoom, { introConfirmed: false });
+      broadcastGameUpdate(slug, {
+        type: "vote-update",
+        roomStatus: liveRoom.roomStatus,
+        gameState: publicGameState(liveRoom),
+      });
+      persistRoomSnapshot(slug, liveRoom);
+    }, graceMs),
+  );
+}
+
+// A client reporting that its board is up, or the set of players we are
+// waiting on changing underneath us (someone left, someone joined).
+function noteReadyChange(slug, room, { broadcast = true } = {}) {
+  if (!room?.gameState || room.roomStatus !== "started") {
+    return false;
+  }
+
+  // The countdown is already running; readiness no longer gates anything.
+  if (!room.gameState.awaitingPlayers) {
+    return false;
+  }
+
+  publishReadyState(room);
+
+  if (!everyoneReady(room)) {
+    if (broadcast) {
+      broadcastGameUpdate(slug, {
+        type: "vote-update",
+        roomStatus: room.roomStatus,
+        gameState: publicGameState(room),
+      });
+    }
+    return false;
+  }
+
+  armMatchTimer(slug, room, { introConfirmed: true });
+  if (broadcast) {
+    broadcastGameUpdate(slug, {
+      type: "vote-update",
+      roomStatus: room.roomStatus,
+      gameState: publicGameState(room),
+    });
+  }
+  return true;
+}
+
 function clearMatchTimer(slug) {
   const timer = matchTimers.get(slug);
   if (timer) {
@@ -890,8 +1105,9 @@ function clearMatchTimer(slug) {
 
 // Arms the deadline for whichever match is now current and publishes it so
 // every client can render the same countdown.
-function armMatchTimer(slug, room) {
+function armMatchTimer(slug, room, options = {}) {
   clearMatchTimer(slug);
+  clearReadyTimer(slug);
 
   if (!room?.gameState || room.roomStatus !== "started") {
     return;
@@ -913,8 +1129,13 @@ function armMatchTimer(slug, room) {
     return;
   }
 
-  const durationMs = estimateIntroMs(matchItems) + VOTE_WINDOW_MS;
+  // Everyone confirmed their board is up, so the window is pure voting time.
+  // The unconfirmed path still has to cover an intro that may still be
+  // playing on a client that never reported in.
+  const durationMs =
+    (options.introConfirmed ? 0 : estimateIntroMs(matchItems)) + VOTE_WINDOW_MS;
   room.gameState.matchDeadline = Date.now() + durationMs;
+  room.gameState.awaitingPlayers = false;
 
   matchTimers.set(
     slug,
@@ -986,6 +1207,39 @@ function publicGameState(room) {
   };
 }
 
+function isParticipantConnected(room, participantId) {
+  if (!participantId) {
+    return false;
+  }
+
+  for (const client of room.clients.values()) {
+    if (client.authenticated && client.participantId === participantId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// The host role, resolved from first principles rather than from whoever got
+// here first: the person who created the room holds it whenever they are in
+// it. If they are not - closed the tab, lost signal - the existing handoff
+// grace hands the role to someone still present, and this hands it straight
+// back the moment the creator returns and verifies.
+function resolveHost(room, creatorParticipantId, fallbackParticipantId) {
+  if (creatorParticipantId) {
+    room.creatorParticipantId = creatorParticipantId;
+  }
+
+  const creatorId = room.creatorParticipantId;
+  if (creatorId && isParticipantConnected(room, creatorId)) {
+    room.hostParticipantId = creatorId;
+    return;
+  }
+
+  assignHostIfMissing(room, fallbackParticipantId);
+}
+
 function assignHostIfMissing(room, participantId) {
   if (
     room.hostParticipantId ||
@@ -999,20 +1253,7 @@ function assignHostIfMissing(room, participantId) {
 }
 
 function isHostConnected(room) {
-  if (!room?.hostParticipantId) {
-    return false;
-  }
-
-  for (const client of room.clients.values()) {
-    if (
-      client.authenticated &&
-      client.participantId === room.hostParticipantId
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+  return isParticipantConnected(room, room?.hostParticipantId);
 }
 
 function clearHostHandoff(slug) {
@@ -1264,7 +1505,11 @@ function attachWsRuntime(server, options = {}) {
             slug,
             claimedId,
             data.participantToken,
-          ).then((ok) => {
+          ).then(({
+            ok,
+            hostParticipantId: persistedHostId,
+            creatorParticipantId: persistedCreatorId,
+          }) => {
             const entry = room.clients.get(ws);
             if (!entry) {
               return;
@@ -1283,7 +1528,13 @@ function attachWsRuntime(server, options = {}) {
             entry.participantId = claimedId;
             entry.authenticated = true;
             room.clients.set(ws, entry);
-            assignHostIfMissing(room, claimedId);
+            // The room may have been built in memory before the creator
+            // redeemed their claim, so take the stored answer over the one
+            // this room started with.
+            if (persistedHostId && !room.hostParticipantId) {
+              room.hostParticipantId = persistedHostId;
+            }
+            resolveHost(room, persistedCreatorId, claimedId);
             room.participantIds.add(claimedId);
             // Covers the stale case too: a host id loaded from Mongo whose
             // owner never reconnects would otherwise hold the room forever.
@@ -1293,8 +1544,21 @@ function attachWsRuntime(server, options = {}) {
               JSON.stringify({ type: "auth-ok", participantId: claimedId }),
             );
 
-            // Joining changes how many votes the live match needs.
+            // Joining changes how many votes the live match needs - and, if
+            // the barrier is still closed, adds one more board to wait for.
             if (room.roomStatus === "started") {
+              // Timers live in this process, not in Mongo, so a room rebuilt
+              // from the database has none: evicted while everyone was away,
+              // or the runtime restarted under a deploy. Its persisted
+              // deadline is already in the past and nothing will ever fire
+              // against it, so the match hangs until every remaining player
+              // votes - and if one of them never comes back, forever.
+              // Re-open the barrier instead: the returning boards report in
+              // and the window is armed again from here.
+              if (!matchTimers.has(slug) && !readyTimers.has(slug)) {
+                armMatchWhenReady(slug, room);
+              }
+              publishReadyState(room);
               const advanced = tallyAndAdvanceMatch(slug, room);
               broadcastGameUpdate(slug, {
                 type: "vote-update",
@@ -1359,6 +1623,9 @@ function attachWsRuntime(server, options = {}) {
             ws.send(
               JSON.stringify({
                 type: "start-denied",
+                // Distinct from "you are not the host": this one clears once
+                // the client presents its token, so it is worth retrying.
+                unverified: true,
                 message: "Could not verify your player identity.",
               }),
             );
@@ -1397,6 +1664,9 @@ function attachWsRuntime(server, options = {}) {
             votesByMatch: {},
             pendingVoteCount: 0,
             requiredVoteCount: 0,
+            readyParticipantCount: 0,
+            requiredReadyCount: 0,
+            awaitingPlayers: true,
             roundWinners: [],
             winner: null,
             matchHistory: [],
@@ -1409,7 +1679,8 @@ function attachWsRuntime(server, options = {}) {
           // Publishes requiredVoteCount for the opening match, so the board
           // shows the real target instead of a stale one until someone votes.
           tallyAndAdvanceMatch(slug, room);
-          armMatchTimer(slug, room);
+          room.readyByMatch = new Map();
+          armMatchWhenReady(slug, room);
           touchRoomExpiry(slug, room);
           persistRoomSnapshot(slug, room, { gameStateChanged: true });
           void recordGameHistoryIfNeeded(slug, room);
@@ -1453,14 +1724,70 @@ function attachWsRuntime(server, options = {}) {
           }
         }
 
+        // "my board is up for this match" - the client half of the readiness
+        // barrier. Only counts for the live match: a late report for a match
+        // that has already settled says nothing about the current one.
+        if (data?.type === "ready") {
+          const reporter = room.clients.get(ws);
+          if (!reporter?.authenticated || !reporter.participantId) {
+            return;
+          }
+
+          if (room.roomStatus !== "started" || !room.gameState) {
+            return;
+          }
+
+          const round =
+            typeof data.round === "number" ? data.round : room.gameState.round ?? 0;
+          const match =
+            typeof data.match === "number"
+              ? data.match
+              : room.gameState.currentMatch ?? 0;
+
+          if (
+            round !== (room.gameState.round ?? 0) ||
+            match !== (room.gameState.currentMatch ?? 0)
+          ) {
+            return;
+          }
+
+          getReadySet(room, getMatchKey(round, match)).add(reporter.participantId);
+          touchRoomExpiry(slug, room);
+          if (noteReadyChange(slug, room)) {
+            persistRoomSnapshot(slug, room);
+          }
+        }
+
         if (data?.type === "vote") {
           if (isRoomExpired(room)) {
             expireRoom(slug);
             return;
           }
 
+          // force-advance already guards this; the vote path did not, so a
+          // late vote - a queued one flushed on reconnect, a double tap as
+          // the final match settled - was tallied against the finished
+          // bracket. That appended a phantom match in which the winner beat
+          // itself, persisted it, and credited the winner an extra win in
+          // every stat built from the match log.
+          if (room.roomStatus !== "started") {
+            return;
+          }
+
           const voter = room.clients.get(ws);
           if (!voter?.authenticated) {
+            // Dropping this silently is how an unverified player spends a
+            // whole game tapping cards that never register - and, because the
+            // quorum only counts authenticated sockets, watching everyone
+            // else's votes decide every match. Tell the client so it can
+            // present its token and replay the vote.
+            ws.send(
+              JSON.stringify({
+                type: "vote-denied",
+                message: "Could not verify your player identity.",
+                vote: { round: data.round, match: data.match, choice: data.choice },
+              }),
+            );
             return;
           }
 
@@ -1553,6 +1880,10 @@ function attachWsRuntime(server, options = {}) {
         // have decided the match. Without this re-tally one person closing
         // their tab mid-match would stall the room until they came back.
         if (currentRoom.roomStatus === "started") {
+          // Same reasoning for the readiness barrier: the room must stop
+          // waiting on a board that has gone away, or the last player left
+          // sits behind a countdown that never starts.
+          noteReadyChange(slug, currentRoom, { broadcast: false });
           const advanced = tallyAndAdvanceMatch(slug, currentRoom);
           broadcastGameUpdate(slug, {
             type: "vote-update",

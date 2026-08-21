@@ -1,4 +1,4 @@
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 import { NextRequest } from "next/server";
 import { summarizeGameResults, type GameResultDoc } from "@/lib/game-results";
 
@@ -17,8 +17,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const gameResults = db.collection("gameResults");
 
     const docs = (await gameResults

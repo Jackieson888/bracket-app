@@ -82,7 +82,6 @@ type BracketGameProps = {
     title?: string;
   };
   slug?: string;
-  session?: unknown;
   connected?: boolean;
   participants?: Record<string, string>;
   roomState?: {
@@ -96,6 +95,11 @@ type BracketGameProps = {
     winner?: Item | null;
     lastWinner?: Item | null;
     matchDeadline?: number | null;
+    // The readiness barrier: the vote window has not started yet, and this is
+    // how many of the room's boards are up so far.
+    awaitingPlayers?: boolean;
+    readyParticipantCount?: number;
+    requiredReadyCount?: number;
     matchHistory?: Array<{
       round: number;
       match: number;
@@ -106,8 +110,9 @@ type BracketGameProps = {
     }>;
   };
   onVote?: (payload: { round: number; match: number; choice: number }) => void;
+  // Fired once per matchup, when this client's board is actually on screen.
+  onReady?: (payload: { round: number; match: number }) => void;
   onPlayAgain?: () => void;
-  onForceAdvance?: () => void;
   isHost?: boolean;
   playerCount?: number;
 };
@@ -119,8 +124,8 @@ export default function BracketGame({
   participants = {},
   roomState,
   onVote,
+  onReady,
   onPlayAgain,
-  onForceAdvance,
   isHost,
   playerCount,
 }: BracketGameProps) {
@@ -269,14 +274,23 @@ export default function BracketGame({
   );
   const myChoice = myPick?.key === matchKey ? myPick.choice : null;
 
+  // Before the barrier opens there is no countdown to report, and "TAP A CARD"
+  // would be a lie on a board whose vote window has not started. Say what is
+  // actually happening instead.
+  const awaitingPlayers = Boolean(roomState?.awaitingPlayers);
+  const readyCount = roomState?.readyParticipantCount ?? 0;
+  const requiredReady = roomState?.requiredReadyCount ?? 0;
+
   const statusLine =
     currentRoundItems.length <= 1
       ? ""
-      : remainingVotes <= 0
-        ? "REVEALING…"
-        : myChoice !== null
-          ? `LOCKED IN · WAITING ON ${remainingVotes} MORE`
-          : `TAP A CARD · ${lockedInCount} OF ${requiredVotes} IN`;
+      : awaitingPlayers && requiredReady > 1
+        ? `WAITING FOR PLAYERS · ${readyCount} OF ${requiredReady} READY`
+        : remainingVotes <= 0
+          ? "REVEALING…"
+          : myChoice !== null
+            ? `LOCKED IN · WAITING ON ${remainingVotes} MORE`
+            : `TAP A CARD · ${lockedInCount} OF ${requiredVotes} IN`;
 
   // Match history is stored with only an id and a title per contender, so the
   // media has to come back from the bracket for the reveal to show the clip
@@ -361,6 +375,18 @@ export default function BracketGame({
   const handleRevealBoard = useCallback(() => {
     setBoardVisible(true);
   }, []);
+
+  // The client half of the readiness barrier. The room holds the countdown
+  // until every board is up, so a phone that took ten seconds to buffer the
+  // clips still gets the full window - and its owner's vote still counts.
+  // Repeats are harmless: the server keeps a set, not a tally.
+  useEffect(() => {
+    if (!boardVisible || currentRoundItems.length <= 1) {
+      return;
+    }
+
+    onReady?.({ round, match: currentMatch });
+  }, [boardVisible, currentMatch, currentRoundItems.length, onReady, round]);
 
   const handleIntroComplete = useCallback(() => {
     setShowIntro(false);

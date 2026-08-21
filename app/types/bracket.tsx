@@ -9,3 +9,11 @@ export interface BracketItem {
   mediaType?: "image" | "video";
   duration?: number | null;
 }
+
+// A saved bracket as listed on the Play/Profile pages.
+export interface BracketSummary {
+  _id: string;
+  title: string;
+  user: { name: string; picture: string };
+  items: BracketItem[];
+}

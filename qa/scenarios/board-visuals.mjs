@@ -4,16 +4,7 @@
 //
 // Needs Playwright and a bracket with real media; skips itself politely
 // without either.
-import { createSession, scenario, sleep } from "../lib/harness.mjs";
-
-async function loadChromium() {
-  try {
-    const { chromium } = await import("playwright");
-    return chromium;
-  } catch {
-    return null;
-  }
-}
+import { createSession, loadChromium, scenario, sleep } from "../lib/harness.mjs";
 
 scenario(
   "board-visuals",

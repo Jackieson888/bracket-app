@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, CircularProgress, Typography } from "@mui/material";
 import BracketGame from "@/app/components/bracket-game";
 import PillLabel from "@/app/components/pill-label";
@@ -39,6 +39,20 @@ type RoomState = {
   requiredVoteCount?: number;
   winner?: { id: string; title: string } | null;
   lastWinner?: { id: string; title: string } | null;
+  matchDeadline?: number | null;
+  // The readiness barrier: the vote window has not started yet, and this is
+  // how many of the room's boards are up so far.
+  awaitingPlayers?: boolean;
+  readyParticipantCount?: number;
+  requiredReadyCount?: number;
+  matchHistory?: Array<{
+    round: number;
+    match: number;
+    items: Array<{ id: string; title: string }>;
+    voteCounts: Record<string, number>;
+    winnerItemId: string;
+    wasBye: boolean;
+  }>;
 };
 
 export default function PlayBracketGame({ slug }: { slug: string }) {
@@ -67,12 +81,25 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
   const reconnectAllowedRef = useRef(true);
   const participantStorageKey = `tvt-participant-id:${slug}`;
   const tokenStorageKey = `tvt-participant-token:${slug}`;
+  // Written by /play when this tab created the room; redeemed on join so the
+  // creator holds the host role however the connection race turns out.
+  const hostClaimStorageKey = `tvt-host-claim:${slug}`;
   // Credential for this player slot, returned by the join endpoint. Kept in a
   // ref so the socket "open" handler always reads the latest value.
   const participantTokenRef = useRef<string | null>(null);
   // The socket can be OPEN but not yet verified, and the server drops votes
   // from an unauthenticated socket. Votes are queued until auth-ok lands.
   const socketAuthenticatedRef = useRef(false);
+  // Tail of the join queue - see persistJoin.
+  const joinChainRef = useRef<Promise<void>>(Promise.resolve());
+  // A readiness report the socket was not verified enough to send yet.
+  const pendingReadyRef = useRef<{ round: number; match: number } | null>(null);
+  // Re-runs the join/auth handshake for the live socket. Set by the socket
+  // effect; used by the vote and start paths, which can discover they are
+  // unauthenticated long after "open" has come and gone.
+  const authenticateRef = useRef<((name: string) => Promise<void>) | null>(
+    null,
+  );
 
   useEffect(() => {
     setParticipantId("");
@@ -143,7 +170,15 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
   };
 
-  const persistJoin = async (name: string) => {
+  const readHostClaim = () => {
+    try {
+      return window.sessionStorage.getItem(hostClaimStorageKey);
+    } catch {
+      return null;
+    }
+  };
+
+  const sendJoin = async (name: string) => {
     const resolvedName = name.trim() || "Guest";
     const resolvedParticipantId = resolveParticipantId();
 
@@ -156,6 +191,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         participantId: resolvedParticipantId,
         displayName: resolvedName,
         participantToken: readStoredToken(),
+        hostClaimToken: readHostClaim(),
       }),
     });
 
@@ -170,6 +206,24 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
 
     return resolvedParticipantId;
+  };
+
+  const persistJoin = (name: string): Promise<string> => {
+    // Two joins for the same slot are routinely in flight at once: the
+    // socket's open handler registers this player at the same moment the
+    // display-name button does. Run in parallel they both post a null token,
+    // the first mints one, and the server rejects the second as a takeover of
+    // a slot that now has a credential - so the loser either never sends
+    // "auth" (an unauthenticated socket whose START GAME is denied) or never
+    // saves the player's name. Chaining them means the later call presents
+    // the token the earlier one stored.
+    const run = () => sendJoin(name);
+    const result = joinChainRef.current.then(run, run);
+    joinChainRef.current = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   };
 
   useEffect(() => {
@@ -262,6 +316,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     const configuredWsBaseUrl = process.env.NEXT_PUBLIC_WS_URL?.trim() || "";
     const MAX_RECONNECT_ATTEMPTS = 3;
     const CONNECT_TIMEOUT_MS = 6000;
+    const AUTH_ATTEMPTS = 3;
+    const AUTH_RETRY_DELAY_MS = 400;
     let isUnmounted = false;
     let openTimeoutHandle: number | null = null;
     let reconnectTimeoutHandle: number | null = null;
@@ -355,6 +411,49 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         nextSocket.close();
       }, CONNECT_TIMEOUT_MS);
 
+      // A socket that never presents its token is not a spectator with a
+      // cosmetic problem: the server drops its votes, leaves it out of the
+      // quorum, and hands the host role to whoever authenticated first. A
+      // single failed join used to wedge a player there for the whole game,
+      // so this retries, and stays callable for anything that later finds
+      // itself unauthenticated.
+      const authenticate = async (name: string) => {
+        for (let attempt = 1; attempt <= AUTH_ATTEMPTS; attempt += 1) {
+          try {
+            await persistJoin(name);
+            const token = participantTokenRef.current;
+            if (!token || nextSocket.readyState !== WebSocket.OPEN) {
+              return;
+            }
+
+            nextSocket.send(
+              JSON.stringify({
+                type: "auth",
+                participantId: resolvedParticipantId,
+                participantToken: token,
+              }),
+            );
+            return;
+          } catch (error) {
+            console.error("Failed to persist room join:", error);
+            if (isUnmounted || nextSocket.readyState !== WebSocket.OPEN) {
+              return;
+            }
+            if (attempt === AUTH_ATTEMPTS) {
+              setConnectionError(
+                "Could not verify you for this room, so your votes will not count. Please refresh.",
+              );
+              return;
+            }
+            await new Promise((resolve) => {
+              window.setTimeout(resolve, AUTH_RETRY_DELAY_MS * attempt);
+            });
+          }
+        }
+      };
+
+      authenticateRef.current = (name) => authenticate(name);
+
       nextSocket.addEventListener("open", () => {
         if (isUnmounted) {
           return;
@@ -382,27 +481,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
         // The socket cannot vote or start the game until it presents the
         // credential from the join endpoint, so register first and only then
         // authenticate this connection.
-        void persistJoin(resolvedName)
-          .then(() => {
-            const token = participantTokenRef.current;
-            if (!token || nextSocket.readyState !== WebSocket.OPEN) {
-              return;
-            }
-
-            nextSocket.send(
-              JSON.stringify({
-                type: "auth",
-                participantId: resolvedParticipantId,
-                participantToken: token,
-              }),
-            );
-          })
-          .catch((error) => {
-            console.error("Failed to persist room join:", error);
-            setConnectionError("Connected, but could not save your player name.");
-          });
-
-
+        void authenticate(resolvedName);
       });
 
       nextSocket.addEventListener("message", (event) => {
@@ -415,6 +494,15 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           if (payload?.type === "auth-ok") {
             socketAuthenticatedRef.current = true;
             setConnectionError("");
+
+            const heldReady = pendingReadyRef.current;
+            if (heldReady) {
+              pendingReadyRef.current = null;
+              nextSocket.send(
+                JSON.stringify({ type: "ready", slug, ...heldReady }),
+              );
+            }
+
             setPendingVotes((current) => {
               if (current.length === 0) {
                 return current;
@@ -436,6 +524,18 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
 
               return [];
             });
+          }
+
+          if (payload?.type === "vote-denied") {
+            // The server and this client disagree about whether the socket is
+            // verified. Believe the server, requeue the vote, and re-present
+            // the token - auth-ok flushes the queue.
+            socketAuthenticatedRef.current = false;
+            if (payload.vote) {
+              setPendingVotes((current) => [...current, payload.vote]);
+            }
+            setConnectionError("Verifying your player identity. Your vote is queued.");
+            void authenticate(resolvedName);
           }
 
           if (payload?.type === "auth-denied") {
@@ -504,6 +604,12 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             setConnectionError(
               payload?.message || "Only the room host can start the game.",
             );
+            // A start refused because the socket is unverified is recoverable:
+            // present the token again so the next tap works.
+            if (payload?.unverified) {
+              socketAuthenticatedRef.current = false;
+              void authenticate(resolvedName);
+            }
           }
         } catch (error) {
           console.error("Error reading room state", error);
@@ -515,6 +621,8 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
           window.clearTimeout(openTimeoutHandle);
           openTimeoutHandle = null;
         }
+
+        socketAuthenticatedRef.current = false;
 
         if (isUnmounted) {
           return;
@@ -546,6 +654,7 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     return () => {
       isUnmounted = true;
       reconnectAllowedRef.current = false;
+      authenticateRef.current = null;
       clearHandles();
       activeSocket?.close();
       setSocket(null);
@@ -644,12 +753,28 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     }
   };
 
-  const handleForceAdvance = () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-    socket.send(JSON.stringify({ type: "force-advance", slug }));
-  };
+  // Sent when the board for a matchup is actually on screen here. useCallback
+  // because the board fires this from an effect - an unstable prop would
+  // report readiness again on every parent render.
+  const handleReady = useCallback(
+    (payload: { round: number; match: number }) => {
+      if (
+        !socket ||
+        socket.readyState !== WebSocket.OPEN ||
+        !socketAuthenticatedRef.current
+      ) {
+        // The board can be up before this socket has finished verifying.
+        // Hold the report and let auth-ok send it, or the room would wait out
+        // the whole grace period on a player who is already looking at it.
+        pendingReadyRef.current = payload;
+        return;
+      }
+
+      pendingReadyRef.current = null;
+      socket.send(JSON.stringify({ type: "ready", slug, ...payload }));
+    },
+    [slug, socket],
+  );
 
   const handleVote = (payload: {
     round: number;
@@ -666,6 +791,11 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
     ) {
       setConnectionError("Still connecting. Your vote is queued.");
       setPendingVotes((current) => [...current, payload]);
+      // The queue is only ever flushed by auth-ok, so a socket that is open
+      // but unverified would sit on these votes for the rest of the game.
+      if (socket.readyState === WebSocket.OPEN) {
+        void authenticateRef.current?.(displayName || "Guest");
+      }
       return;
     }
 
@@ -1137,14 +1267,13 @@ export default function PlayBracketGame({ slug }: { slug: string }) {
             }
           }
           slug={slug}
-          session={session}
           connected={connected}
           participants={Object.fromEntries(
             clients.map((client) => [client.id, client.displayName || "Guest"]),
           )}
           roomState={roomState ?? undefined}
           onVote={handleVote}
-          onForceAdvance={handleForceAdvance}
+          onReady={handleReady}
           onPlayAgain={handleStartGame}
           isHost={isHost}
           playerCount={Math.max(1, clients.length)}

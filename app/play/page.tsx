@@ -6,20 +6,14 @@ import { visuallyHidden } from "@mui/utils";
 import BracketCard from "../components/bracket-card";
 import PillLabel from "../components/pill-label";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
-import type { BracketItem } from "../types/bracket";
-
-interface Item {
-  _id: string;
-  title: string;
-  user: { name: string; picture: string };
-  items: BracketItem[];
-}
+import { createSessionAndNavigate } from "@/lib/create-session";
+import type { BracketSummary } from "../types/bracket";
 
 export default function Play() {
   const [bracketsLoading, setBracketsLoading] = useState(true);
   const [joinLoading, setJoinLoading] = useState(false);
   const [slug, setSlug] = useState("");
-  const [newestBrackets, setNewestBrackets] = useState<Item[]>([]);
+  const [newestBrackets, setNewestBrackets] = useState<BracketSummary[]>([]);
   const [joinError, setJoinError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -48,16 +42,7 @@ export default function Play() {
 
   const handlePlayItem = async (item: unknown) => {
     try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-      const data = await res.json();
-      if (!data?.slug) {
-        throw new Error("Session could not be created");
-      }
-      window.location.href = `/play/${data.slug}`;
+      await createSessionAndNavigate(item);
     } catch (err) {
       console.error("Error generating game session: ", err);
       setJoinError("Unable to create that room right now.");
@@ -236,7 +221,7 @@ export default function Play() {
         ) : null}
 
         <Box sx={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {newestBrackets.map((item: Item, idx: number) => (
+          {newestBrackets.map((item: BracketSummary, idx: number) => (
             <BracketCard
               key={item._id}
               id={item._id}

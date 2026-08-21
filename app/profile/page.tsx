@@ -12,14 +12,8 @@ import {
 import { visuallyHidden } from "@mui/utils";
 import { useUser } from "../user-provider";
 import BracketCard from "../components/bracket-card";
-import type { BracketItem } from "../types/bracket";
-
-interface Item {
-  _id: string;
-  title: string;
-  user: { name: string; picture: string };
-  items: BracketItem[];
-}
+import { createSessionAndNavigate } from "@/lib/create-session";
+import type { BracketSummary } from "../types/bracket";
 
 export default function Profile() {
   const userContext = useUser() as {
@@ -27,7 +21,7 @@ export default function Profile() {
   } | null;
   const { user } = userContext || { user: null };
   const [joinError, setJoinError] = useState("");
-  const [myBrackets, setMyBrackets] = useState<Item[]>([]);
+  const [myBrackets, setMyBrackets] = useState<BracketSummary[]>([]);
   const [myBracketsLoading, setMyBracketsLoading] = useState(true);
   const [profileStats, setProfileStats] = useState<{
     gamesHosted: number;
@@ -79,16 +73,7 @@ export default function Profile() {
 
   const handlePlayItem = async (item: unknown) => {
     try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(item),
-      });
-      const data = await res.json();
-      if (!data?.slug) {
-        throw new Error("Session could not be created");
-      }
-      window.location.href = `/play/${data.slug}`;
+      await createSessionAndNavigate(item);
     } catch (err) {
       console.error("Error generating game session: ", err);
       setJoinError("Unable to create that room right now.");
@@ -174,7 +159,7 @@ export default function Profile() {
               <Divider
                 sx={{ bgcolor: (theme) => theme.palette.secondary.main }}
               />
-              {myBrackets.map((item: Item, idx: number) => (
+              {myBrackets.map((item: BracketSummary, idx: number) => (
                 <BracketCard
                   key={item._id}
                   id={item._id}

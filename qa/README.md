@@ -38,6 +38,9 @@ Environment:
 | `QA_BASE_URL` | `http://localhost:3000` | the app under test |
 | `QA_WS_URL` | `<base>/ws` | set when the runtime runs standalone |
 | `QA_HOST_HANDOFF_GRACE_MS` | `15000` | must match the server's `HOST_HANDOFF_GRACE_MS` |
+| `QA_READY_GRACE_MS` | `20000` | must match the server's `READY_GRACE_MS` |
+| `QA_ROOM_IDLE_TTL_MS` | unset | must match the server's `ROOM_IDLE_TTL_MS`; unset skips the eviction scenario |
+| `QA_VOTE_WINDOW_MS` | `30000` | must match the server's `VOTE_WINDOW_MS` |
 
 The host-handoff scenario waits out the real grace period, so start the server
 with a short one to keep the run quick:
@@ -46,6 +49,32 @@ with a short one to keep the run quick:
 HOST_HANDOFF_GRACE_MS=1500 npm run dev
 QA_HOST_HANDOFF_GRACE_MS=1500 npm run qa
 ```
+
+`readiness-barrier-cannot-stall-the-room` does the same for the readiness
+grace — the bound on how long a match waits for a board that never reports in:
+
+```bash
+READY_GRACE_MS=2000 npm run dev
+QA_READY_GRACE_MS=2000 npm run qa
+```
+
+`a-resumed-room-gets-its-clock-back` needs a room to be evicted from memory
+and rebuilt from Mongo — the state a deploy leaves every in-progress room in.
+The idle TTL is five minutes by default, so it skips itself unless the server
+is started with a short one:
+
+```bash
+ROOM_IDLE_TTL_MS=2000 VOTE_WINDOW_MS=6000 npm run dev
+QA_ROOM_IDLE_TTL_MS=2000 QA_VOTE_WINDOW_MS=6000 npm run qa
+```
+
+### Readiness
+
+The vote window does not open until every player's board is up: each client
+sends `ready` for the live matchup, and the server starts the countdown when
+the last one checks in. `Player` mirrors that automatically, so scenarios play
+normally without thinking about it — pass `autoReady: false` to drive readiness
+by hand and watch the barrier hold (`five-player-room` does).
 
 ## It writes to a real database
 
@@ -122,8 +151,8 @@ per made-up code. Rejecting a slug with no session document would fix it.
 
 ## Older scripts
 
-`multiplayer-qa-runner.mjs` predates participant tokens: it never sends `auth`,
-so today the server ignores everything it does after connecting. This suite
-replaces it. The single-purpose probes (`host-handoff-check.mjs`,
+`multiplayer-qa-runner.mjs` predated participant tokens (it never sent `auth`,
+so the server ignored everything it did after connecting) and has been removed
+now that this suite replaces it. The single-purpose probes (`host-handoff-check.mjs`,
 `ws-diagnostic.mjs`, `persist-race-probe.mjs`, and friends) are still useful for
 poking at one behaviour by hand.

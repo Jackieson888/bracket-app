@@ -1,6 +1,6 @@
-import clientPromise from "@/lib/mongodb";
+import { getDb } from "@/lib/mongodb";
 import {
-  toPublicUser,
+  toPublicUserOrGuest,
   toPublicParticipant,
   type ParticipantRecord,
 } from "@/lib/user";
@@ -84,8 +84,7 @@ export async function GET(
       return rateLimitResponse(limit.retryAfterSeconds);
     }
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const sessions = db.collection("sessions");
     const { slug } = await params;
     const result = await sessions.findOne({ slug: slug });
@@ -102,17 +101,16 @@ export async function GET(
     const {
       hostUserId: _hostUserId,
       joinedUserIds: _joinedUserIds,
+      // The creator's claim on the host role. Anyone can GET a room by its
+      // code, so leaking this would make the role takeable by whoever asks.
+      hostClaimToken: _hostClaimToken,
       ...safeResult
     } = result;
     const bracket =
       safeResult.bracket && typeof safeResult.bracket === "object"
         ? {
             ...safeResult.bracket,
-            user: toPublicUser(
-              safeResult.bracket.user && !safeResult.bracket.user.guest
-                ? safeResult.bracket.user
-                : null,
-            ),
+            user: toPublicUserOrGuest(safeResult.bracket.user),
           }
         : safeResult.bracket;
 
@@ -162,8 +160,7 @@ export async function POST(
         ? body.displayName.trim()
         : "Guest";
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const sessions = db.collection("sessions");
 
     const now = new Date();
@@ -177,6 +174,7 @@ export async function POST(
           roomStatus: 1,
           participantIds: 1,
           participantLookup: 1,
+          hostClaimToken: 1,
         },
       },
     );
@@ -212,6 +210,15 @@ export async function POST(
 
     const participantToken = existingToken ?? mintParticipantToken();
 
+    // The creator's browser presents the token it was handed when it made the
+    // room, and the host role follows it to whichever participant slot they
+    // are using. Deliberately reclaimable: if they refresh, or come back after
+    // a handoff gave the role away, presenting it again puts them back in
+    // charge of the room they set up.
+    const claimsHost =
+      typeof existingSession.hostClaimToken === "string" &&
+      tokensMatch(existingSession.hostClaimToken, body.hostClaimToken);
+
     if (existingSession.roomStatus === "started" && !isKnownParticipant) {
       return Response.json(
         {
@@ -225,6 +232,11 @@ export async function POST(
       { slug },
       {
         $set: {
+          // Not hostParticipantId: that field tracks who holds the role right
+          // now and is owned by the realtime runtime, which rewrites it on
+          // every room snapshot. This records who the creator *is*, which the
+          // runtime reads and never writes.
+          ...(claimsHost ? { hostClaimParticipantId: participantId } : {}),
           [`participantLookup.${participantId}`]: {
             participantId,
             displayName,
@@ -272,6 +284,7 @@ export async function POST(
       slug,
       participantId,
       participantToken,
+      isHost: claimsHost,
       participants,
     });
   } catch (err) {

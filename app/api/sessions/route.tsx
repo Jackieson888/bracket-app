@@ -1,4 +1,6 @@
-import clientPromise from "@/lib/mongodb";
+import { randomBytes } from "crypto";
+
+import { getDb } from "@/lib/mongodb";
 import { auth0 } from "@/lib/auth0";
 import generateSlug from "@/lib/slug";
 import { checkRateLimit, clientKey, rateLimitResponse } from "@/lib/rate-limit";
@@ -12,6 +14,19 @@ const SLUG_ATTEMPTS = 5;
 
 const CREATE_LIMIT = 10;
 const CREATE_WINDOW_MS = 60_000;
+
+// Which player is the host used to be decided by a race: whichever socket
+// finished verifying first took the role, so the person who set the room up
+// routinely watched someone else get the start button. The creator is known
+// here and nowhere else, so this hands their browser a claim it can present
+// when it joins. A token rather than the account id because most rooms are
+// made by guests, who have no account to match on.
+//
+// Never leave this endpoint's response - see the GET handler, which strips it
+// alongside the other room secrets.
+function mintHostClaimToken() {
+  return randomBytes(32).toString("hex");
+}
 
 type IncomingItem = Record<string, unknown>;
 
@@ -151,8 +166,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const client = await clientPromise;
-    const db = client.db("prod");
+    const db = await getDb();
     const sessions = db.collection("sessions");
 
     await ensureSessionIndexes(sessions);
@@ -170,9 +184,13 @@ export async function POST(req: Request) {
         }
       : null;
 
+    const hostClaimToken = mintHostClaimToken();
+
     const buildDoc = (slug: string) => ({
       slug,
       bracket,
+      hostClaimToken,
+      hostParticipantId: null,
       hostUserId: session?.user?.sub ?? null,
       joinedUserIds: [session?.user?.sub].filter(Boolean),
       participantLookup: hostParticipant
@@ -203,7 +221,11 @@ export async function POST(req: Request) {
 
       try {
         const result = await sessions.insertOne(buildDoc(slug));
-        return Response.json({ slug, sessionId: result.insertedId });
+        return Response.json({
+          slug,
+          sessionId: result.insertedId,
+          hostClaimToken,
+        });
       } catch (err) {
         // 11000 is a duplicate key - that code is already live, so draw again.
         if ((err as { code?: number })?.code === 11000) {

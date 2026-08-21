@@ -17,6 +17,42 @@ export const repoRoot = path.resolve(here, "..", "..");
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Connects a raw (non-Player) socket and collects whatever it receives until
+// it closes or timeoutMs elapses. Used to probe how the server treats a
+// socket the harness deliberately never authenticates.
+export function probeRawSocket(url, { headers, timeoutMs = 4000 } = {}) {
+  return new Promise((resolve) => {
+    const ws = new WebSocket(url, { headers });
+    const seen = [];
+    const finish = (closed) => resolve({ seen, closed });
+    const timer = setTimeout(() => {
+      ws.close();
+      finish(false);
+    }, timeoutMs);
+    ws.on("message", (raw) => {
+      try {
+        seen.push(JSON.parse(raw.toString()));
+      } catch {
+        seen.push({ type: "parse-error" });
+      }
+    });
+    ws.on("close", () => {
+      clearTimeout(timer);
+      finish(true);
+    });
+    ws.on("error", () => {});
+  });
+}
+
+export async function loadChromium() {
+  try {
+    const { chromium } = await import("playwright");
+    return chromium;
+  } catch {
+    return null;
+  }
+}
+
 export function loadEnvLocal() {
   const env = {};
   try {
@@ -90,11 +126,23 @@ export function makeItems(count, prefix = "item") {
 // POST /api/sessions is rate limited to 10/minute per key. Scenarios run back
 // to back, so wait out the window rather than failing a scenario for a limiter
 // that is working as designed.
-export async function createSession(bracket, { ip, attempts = 3 } = {}) {
+export async function createSession(bracket, options = {}) {
+  const { slug } = await createRoom(bracket, options);
+  return slug;
+}
+
+// The full create response. The host claim token is only ever handed to the
+// creating client, and presenting it on join is what makes that client the
+// host - so a scenario that cares about the host role needs this, not just
+// the slug.
+export async function createRoom(bracket, { ip, attempts = 3 } = {}) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const res = await api("/api/sessions", { method: "POST", body: bracket, ip });
     if (res.ok && res.body?.slug) {
-      return res.body.slug;
+      return {
+        slug: res.body.slug,
+        hostClaimToken: res.body.hostClaimToken ?? null,
+      };
     }
     if (res.status === 429 && attempt < attempts - 1) {
       await sleep(Math.min(res.retryAfter || 2, 61) * 1000);
@@ -109,19 +157,19 @@ export async function createSession(bracket, { ip, attempts = 3 } = {}) {
 
 export async function joinSession(
   slug,
-  { participantId, displayName, participantToken, ip },
+  { participantId, displayName, participantToken, hostClaimToken, ip },
 ) {
   return api(`/api/sessions/${slug}`, {
     method: "POST",
     ip,
-    body: { participantId, displayName, participantToken },
+    body: { participantId, displayName, participantToken, hostClaimToken },
   });
 }
 
 let playerCounter = 0;
 
 export class Player {
-  constructor({ slug, participantId, displayName, ip }) {
+  constructor({ slug, participantId, displayName, ip, autoReady = true }) {
     this.slug = slug;
     this.participantId = participantId;
     this.displayName = displayName;
@@ -131,6 +179,41 @@ export class Player {
     this.token = null;
     this.ws = null;
     this.closed = false;
+    // A browser reports "my board is up" as soon as the intro finishes, and
+    // the room holds the vote window closed until every player has. A harness
+    // player that never reports would leave every match waiting out the full
+    // grace period, so mirror the browser by default. Scenarios that are
+    // testing the barrier itself turn this off and call ready() by hand.
+    this.autoReady = autoReady;
+    this.readyReported = new Set();
+  }
+
+  // Mirrors app/components/bracket-game.tsx: readiness is per matchup, and
+  // only for the one currently live.
+  maybeAutoReady(payload) {
+    if (!this.autoReady || !this.authenticated) {
+      return;
+    }
+    if (payload?.roomStatus !== "started") {
+      return;
+    }
+    const gameState = payload?.gameState;
+    if (!gameState || (gameState.currentRoundItems ?? []).length <= 1) {
+      return;
+    }
+
+    const round = gameState.round ?? 0;
+    const match = gameState.currentMatch ?? 0;
+    const key = `${round}:${match}`;
+    if (this.readyReported.has(key)) {
+      return;
+    }
+    this.readyReported.add(key);
+    this.ready({ round, match });
+  }
+
+  ready({ round, match }) {
+    this.send({ type: "ready", slug: this.slug, round, match });
   }
 
   // The full browser sequence. `skipAuth` leaves the socket unverified, which
@@ -139,7 +222,15 @@ export class Player {
   // reconnecting tab does with its stored token.
   static async enter(
     slug,
-    { name = "Player", ip, participantId, token, skipAuth = false } = {},
+    {
+      name = "Player",
+      ip,
+      participantId,
+      token,
+      skipAuth = false,
+      hostClaimToken,
+      autoReady = true,
+    } = {},
   ) {
     const address = ip || config.nextIp();
     const id =
@@ -150,6 +241,7 @@ export class Player {
       participantId: id,
       displayName: name,
       ip: address,
+      autoReady,
     });
 
     if (!skipAuth) {
@@ -158,6 +250,7 @@ export class Player {
         const joined = await joinSession(slug, {
           participantId: id,
           displayName: name,
+          hostClaimToken,
           ip: address,
         });
         if (!joined.ok || !joined.body?.participantToken) {
@@ -208,11 +301,19 @@ export class Player {
       ws.on("message", (raw) => {
         const seq = this.messages.length;
         try {
+          const payload = JSON.parse(raw.toString());
           this.messages.push({
             at: Date.now(),
             seq,
-            payload: JSON.parse(raw.toString()),
+            payload,
           });
+          // Set here rather than after enter()'s waitForMessage resolves: a
+          // game-started landing in that gap would be seen by an "unverified"
+          // player and its readiness silently skipped.
+          if (payload?.type === "auth-ok") {
+            this.authenticated = true;
+          }
+          this.maybeAutoReady(payload);
         } catch (error) {
           this.messages.push({
             at: Date.now(),

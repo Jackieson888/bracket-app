@@ -31,6 +31,9 @@ import "./scenarios/resilience-and-identity.mjs";
 import "./scenarios/timers-and-expiry.mjs";
 import "./scenarios/history-and-stats.mjs";
 import "./scenarios/board-visuals.mjs";
+import "./scenarios/browser-identity.mjs";
+import "./scenarios/five-player-room.mjs";
+import "./scenarios/loop-integrity.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name) => args.some((arg) => arg === `--${name}`);
