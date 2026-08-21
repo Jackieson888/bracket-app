@@ -49,3 +49,7 @@ amplifyconfiguration*
 
 # local video fixtures
 /test-media/
+
+# qa suite artifacts
+/qa/output/
+/qa/tmp/

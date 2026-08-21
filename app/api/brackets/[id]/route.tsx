@@ -23,7 +23,7 @@ export async function GET(
     }
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const brackets = db.collection("brackets");
 
     const result = await brackets.findOne({
@@ -36,13 +36,12 @@ export async function GET(
 
     return Response.json({
       ...result,
-      user: toPublicUser(result.user && !result.user.guest ? result.user : null),
+      user: toPublicUser(
+        result.user && !result.user.guest ? result.user : null,
+      ),
     });
   } catch (err) {
     console.error("Error getting bracket:", err);
-    return Response.json(
-      { error: "Failed to fetch bracket" },
-      { status: 500 },
-    );
+    return Response.json({ error: "Failed to fetch bracket" }, { status: 500 });
   }
 }

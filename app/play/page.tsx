@@ -6,12 +6,13 @@ import { visuallyHidden } from "@mui/utils";
 import BracketCard from "../components/bracket-card";
 import PillLabel from "../components/pill-label";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
+import type { BracketItem } from "../types/bracket";
 
 interface Item {
   _id: string;
   title: string;
   user: { name: string; picture: string };
-  items: unknown[];
+  items: BracketItem[];
 }
 
 export default function Play() {

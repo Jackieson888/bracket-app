@@ -18,7 +18,7 @@ export async function GET(
     const { id } = await params;
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const gameResults = db.collection("gameResults");
 
     const docs = (await gameResults

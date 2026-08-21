@@ -2,9 +2,12 @@
 
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import Image from "next/image";
 import { initialsFor, swatchForIndex } from "@/lib/avatar";
 import AvatarGlyph from "./avatar-glyph";
+import { isVideoItem, previewImageUrl } from "@/lib/media";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
+import type { BracketItem as BracketEntry } from "../types/bracket";
 
 interface BracketItem {
   title: string;
@@ -12,7 +15,7 @@ interface BracketItem {
     name: string;
     picture: string;
   };
-  items: unknown[];
+  items: BracketEntry[];
   stats?: {
     playCount: number;
     topItemTitle: string | null;
@@ -30,6 +33,10 @@ export default function BracketCard({
   onPlayItem: (item: BracketItem) => void;
 }) {
   const swatch = swatchForIndex(index);
+  // The card has no cover art of its own, so it borrows the first contender
+  // that carries media - videos included, via their poster frame.
+  const coverItem = item.items?.find((entry) => previewImageUrl(entry)) ?? null;
+  const coverUrl = previewImageUrl(coverItem);
 
   return (
     <Box
@@ -57,13 +64,35 @@ export default function BracketCard({
             "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, rgba(255,255,255,0.015) 8px 16px)",
         }}
       >
-        <Box
-          sx={{
-            position: "absolute",
-            inset: 0,
-            background: `linear-gradient(160deg, ${swatch}22, transparent 70%)`,
-          }}
-        />
+        {coverUrl ? (
+          <>
+            <Image
+              src={coverUrl}
+              alt=""
+              fill
+              sizes="56px"
+              style={{ objectFit: "cover" }}
+            />
+            {isVideoItem(coverItem) ? (
+              <Box
+                className="bracket-play-badge bracket-play-badge--small"
+                aria-hidden="true"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path d="M8 5.5v13l11-6.5-11-6.5Z" fill="currentColor" />
+                </svg>
+              </Box>
+            ) : null}
+          </>
+        ) : (
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              background: `linear-gradient(160deg, ${swatch}22, transparent 70%)`,
+            }}
+          />
+        )}
       </Box>
 
       <Box

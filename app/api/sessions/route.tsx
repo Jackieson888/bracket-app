@@ -15,7 +15,10 @@ const CREATE_WINDOW_MS = 60_000;
 
 type IncomingItem = Record<string, unknown>;
 
-function asBoundedString(value: unknown, maxLength: number): string | undefined {
+function asBoundedString(
+  value: unknown,
+  maxLength: number,
+): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -24,7 +27,9 @@ function asBoundedString(value: unknown, maxLength: number): string | undefined 
 }
 
 function asFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 // Only http(s) urls are stored. Without this a bracket could carry a
@@ -89,7 +94,8 @@ function sanitizeBracket(body: unknown) {
 
   return {
     _id: asBoundedString(source._id, 100) ?? null,
-    title: asBoundedString(source.title, MAX_TITLE_LENGTH) ?? "Untitled bracket",
+    title:
+      asBoundedString(source.title, MAX_TITLE_LENGTH) ?? "Untitled bracket",
     items,
   };
 }
@@ -111,7 +117,10 @@ async function ensureSessionIndexes(
     );
     // Makes the retry loop below meaningful: without this two rooms could hold
     // the same code and findOne({ slug }) would return an arbitrary one.
-    await sessions.createIndex({ slug: 1 }, { unique: true, name: "sessionSlug" });
+    await sessions.createIndex(
+      { slug: 1 },
+      { unique: true, name: "sessionSlug" },
+    );
   } catch (err) {
     // Most likely pre-existing duplicate slugs blocking the unique index.
     // Don't take the route down over it - log and continue.
@@ -143,7 +152,7 @@ export async function POST(req: Request) {
     }
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const sessions = db.collection("sessions");
 
     await ensureSessionIndexes(sessions);
@@ -210,6 +219,9 @@ export async function POST(req: Request) {
     );
   } catch (err) {
     console.error("Error creating session:", err);
-    return Response.json({ error: "Failed to create session" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to create session" },
+      { status: 500 },
+    );
   }
 }

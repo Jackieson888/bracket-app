@@ -17,7 +17,7 @@ export async function GET(): Promise<Response> {
     }
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const gameResults = db.collection("gameResults");
 
     const [gamesHosted, gamesPlayed, recentGames] = await Promise.all([

@@ -136,10 +136,14 @@ export function videoPosterUrl(
     return null;
   }
 
+  // e_trim drops a uniform border, which for a clip letterboxed into 16:9
+  // means the baked-in black bars: the card crops to fill, so without this the
+  // bars survive as dead bands across the top and bottom of the still. A frame
+  // that has no border to trim comes back untouched.
   const transformed = insertCloudinaryTransform(
     item.url,
     CLOUDINARY_VIDEO_MARKER,
-    `so_0,c_limit,w_${maxWidth},q_auto`,
+    `so_0,e_trim,c_limit,w_${maxWidth},q_auto`,
   );
 
   if (!transformed) {

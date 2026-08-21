@@ -51,7 +51,7 @@ test("builds a jpg poster frame from the first frame of the clip", () => {
   const poster = videoPosterUrl({ url: VIDEO_URL });
   assert.equal(
     poster,
-    "https://res.cloudinary.com/demo/video/upload/so_0,c_limit,w_720,q_auto/v1700000000/bracket-items/clip.jpg",
+    "https://res.cloudinary.com/demo/video/upload/so_0,e_trim,c_limit,w_720,q_auto/v1700000000/bracket-items/clip.jpg",
   );
 });
 

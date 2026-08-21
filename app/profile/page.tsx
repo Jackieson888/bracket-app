@@ -12,12 +12,13 @@ import {
 import { visuallyHidden } from "@mui/utils";
 import { useUser } from "../user-provider";
 import BracketCard from "../components/bracket-card";
+import type { BracketItem } from "../types/bracket";
 
 interface Item {
   _id: string;
   title: string;
   user: { name: string; picture: string };
-  items: unknown[];
+  items: BracketItem[];
 }
 
 export default function Profile() {

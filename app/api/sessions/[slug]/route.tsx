@@ -1,5 +1,9 @@
 import clientPromise from "@/lib/mongodb";
-import { toPublicUser, toPublicParticipant, type ParticipantRecord } from "@/lib/user";
+import {
+  toPublicUser,
+  toPublicParticipant,
+  type ParticipantRecord,
+} from "@/lib/user";
 import { auth0 } from "@/lib/auth0";
 
 import { NextRequest } from "next/server";
@@ -81,7 +85,7 @@ export async function GET(
     }
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const sessions = db.collection("sessions");
     const { slug } = await params;
     const result = await sessions.findOne({ slug: slug });
@@ -95,7 +99,11 @@ export async function GET(
       return Response.json({ error: "Session expired" }, { status: 404 });
     }
 
-    const { hostUserId: _hostUserId, joinedUserIds: _joinedUserIds, ...safeResult } = result;
+    const {
+      hostUserId: _hostUserId,
+      joinedUserIds: _joinedUserIds,
+      ...safeResult
+    } = result;
     const bracket =
       safeResult.bracket && typeof safeResult.bracket === "object"
         ? {
@@ -155,7 +163,7 @@ export async function POST(
         : "Guest";
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const sessions = db.collection("sessions");
 
     const now = new Date();
@@ -188,8 +196,7 @@ export async function POST(
 
     const existingRecord = (
       existingSession.participantLookup as
-        | Record<string, { participantToken?: string }>
-        | undefined
+        Record<string, { participantToken?: string }> | undefined
     )?.[participantId];
     const existingToken = existingRecord?.participantToken;
 
@@ -208,8 +215,7 @@ export async function POST(
     if (existingSession.roomStatus === "started" && !isKnownParticipant) {
       return Response.json(
         {
-          error:
-            "This game has already started. You can no longer join.",
+          error: "This game has already started. You can no longer join.",
         },
         { status: 409 },
       );

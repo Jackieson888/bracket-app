@@ -27,6 +27,11 @@ type MatchVote = {
   at: number;
 };
 
+// A countdown that runs the whole match is just pressure; one that appears for
+// the last few seconds is a warning. Matches the vote window the server arms.
+const TIMER_REVEAL_SECONDS = 8;
+const TIMER_URGENT_SECONDS = 5;
+
 const VOTER_COLOR_POOL = [
   "var(--primary)",
   "var(--secondary)",
@@ -213,9 +218,12 @@ export default function BracketGame({
     Math.ceil(currentRoundItems.length / matchSize),
   );
 
+  // Counted from who has locked in, not from the per-side tallies: while a
+  // match is live the server strips the choice off every vote, so both sides
+  // read as zero voters and this said the room was waiting on everybody.
   const remainingVotes = Math.max(
     0,
-    requiredVotes - (leftVoters.count + rightVoters.count),
+    requiredVotes - Object.keys(currentMatchVotes ?? {}).length,
   );
 
   // Choices are hidden until the match settles, so the board reports who has
@@ -248,12 +256,43 @@ export default function BracketGame({
       ? Math.max(0, Math.ceil((deadline - nowMs) / 1000))
       : null;
 
+  // Hidden until the match is nearly out of time.
+  const timerSeconds =
+    secondsLeft !== null && secondsLeft <= TIMER_REVEAL_SECONDS
+      ? secondsLeft
+      : null;
+
+  // The server hides who voted for what while a match is live, so the only
+  // pick this client can honestly show is the one it sent itself.
+  const [myPick, setMyPick] = useState<{ key: string; choice: number } | null>(
+    null,
+  );
+  const myChoice = myPick?.key === matchKey ? myPick.choice : null;
+
   const statusLine =
     currentRoundItems.length <= 1
       ? ""
-      : remainingVotes > 0
-        ? `TAP A CARD · ${lockedInCount} OF ${requiredVotes} LOCKED IN`
-        : "REVEALING…";
+      : remainingVotes <= 0
+        ? "REVEALING…"
+        : myChoice !== null
+          ? `LOCKED IN · WAITING ON ${remainingVotes} MORE`
+          : `TAP A CARD · ${lockedInCount} OF ${requiredVotes} IN`;
+
+  // Match history is stored with only an id and a title per contender, so the
+  // media has to come back from the bracket for the reveal to show the clip
+  // that won. Later rounds carry the same item objects forward, so the
+  // bracket's own list covers every match.
+  const itemsById = useMemo(() => {
+    const byId = new Map<string, Item>();
+    for (const list of [bracket?.items ?? [], currentRoundItems]) {
+      for (const item of list) {
+        if (item?.id) {
+          byId.set(item.id, item);
+        }
+      }
+    }
+    return byId;
+  }, [bracket?.items, currentRoundItems]);
 
   // The result of the match that just finished, revealed at the start of the
   // next matchup instead of leaking live while people are still voting.
@@ -263,13 +302,21 @@ export default function BracketGame({
     if (!last || last.wasBye || (last.items?.length ?? 0) < 2) {
       return null;
     }
-    return last;
-  }, [roomState?.matchHistory]);
+    return {
+      ...last,
+      items: last.items.map((item) => ({
+        ...itemsById.get(item.id),
+        ...item,
+      })),
+    };
+  }, [roomState?.matchHistory, itemsById]);
 
   const handleVote = ({ index }: { item: Item; index: number }) => {
     if (!onVote) {
       return;
     }
+
+    setMyPick({ key: matchKey, choice: index });
 
     onVote({
       round,
@@ -430,7 +477,7 @@ export default function BracketGame({
           // Keyed by match so the heading re-fades as the game advances,
           // rather than the numbers silently swapping under you.
           <Box
-            key={matchKey}
+            key={`heading-${matchKey}`}
             className="bracket-pop-in-fade"
             sx={{ textAlign: "center", pt: 0.5 }}
           >
@@ -464,7 +511,7 @@ export default function BracketGame({
 
         {!isFinalWinner && boardVisible ? (
           <Box
-            key={matchKey}
+            key={`panel-${matchKey}`}
             className="bracket-round-panel bracket-round-panel--visible"
             sx={{
               position: "relative",
@@ -490,6 +537,7 @@ export default function BracketGame({
                   extraVoterCount={leftVoters.extraCount}
                   votePct={leftPct}
                   accentColor={leading === "left" ? "var(--primary)" : null}
+                  isMyPick={myChoice === leftIndex}
                   className="bracket-round-item__card"
                 />
               ) : null}
@@ -521,6 +569,7 @@ export default function BracketGame({
                   extraVoterCount={rightVoters.extraCount}
                   votePct={rightPct}
                   accentColor={leading === "right" ? "var(--secondary)" : null}
+                  isMyPick={myChoice === rightIndex}
                   className="bracket-round-item__card"
                 />
               </Box>
@@ -549,18 +598,34 @@ export default function BracketGame({
               {statusLine}
             </Typography>
 
-            {secondsLeft !== null ? (
+            {requiredVotes > 1 && requiredVotes <= 12 ? (
+              <Box className="bracket-lockin-row" aria-hidden="true">
+                {Array.from({ length: requiredVotes }, (_, dot) => (
+                  <Box
+                    key={dot}
+                    className="bracket-lockin-dot"
+                    data-filled={dot < lockedInCount ? "true" : undefined}
+                  />
+                ))}
+              </Box>
+            ) : null}
+
+            {timerSeconds !== null ? (
               <Box
                 className="bracket-timer"
-                data-urgent={secondsLeft <= 10 ? "true" : undefined}
+                data-urgent={
+                  timerSeconds <= TIMER_URGENT_SECONDS ? "true" : undefined
+                }
                 role="timer"
-                aria-label={`${secondsLeft} seconds left to vote`}
+                aria-label={`${timerSeconds} seconds left to vote`}
               >
                 <Box
                   className="bracket-timer-fill"
-                  sx={{ width: `${Math.min(100, (secondsLeft / 30) * 100)}%` }}
+                  sx={{
+                    width: `${Math.min(100, (timerSeconds / TIMER_REVEAL_SECONDS) * 100)}%`,
+                  }}
                 />
-                <span className="bracket-timer-value">{secondsLeft}s</span>
+                <span className="bracket-timer-value">{timerSeconds}s</span>
               </Box>
             ) : null}
 

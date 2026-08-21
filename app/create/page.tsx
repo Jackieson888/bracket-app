@@ -6,6 +6,7 @@ import BracketItemCard from "../components/bracket-item-card";
 import NewBracketItemCard from "../components/new-bracket-item-card";
 import PillLabel from "../components/pill-label";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { focusableButtonSx, onActivateKeyDown } from "@/lib/a11y";
 import { visuallyHidden } from "@mui/utils";
 
@@ -39,6 +40,7 @@ const MIN_ITEMS = 4;
 export default function CreateBracketPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const router = useRouter();
   const userContext = useUser();
   const { user } = userContext || { user: null };
 
@@ -48,6 +50,7 @@ export default function CreateBracketPage() {
     return stored ? JSON.parse(stored) : [];
   });
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
 
   const activeItem =
@@ -109,18 +112,34 @@ export default function CreateBracketPage() {
     if (!user) return alert("You must be logged in to save.");
     if (bracketItems.length < MIN_ITEMS)
       return alert("You need at least 4 items to save a bracket.");
+    if (isSaving) return;
 
-    await fetch("/api/brackets", {
-      method: "POST",
-      body: JSON.stringify({ title, description, items: bracketItems, user }),
-    });
+    try {
+      setIsSaving(true);
+      const res = await fetch("/api/brackets", {
+        method: "POST",
+        body: JSON.stringify({ title, description, items: bracketItems, user }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Save failed with ${res.status}`);
+      }
+
+      // The saved bracket is the newest one, so it lands at the top of the
+      // play page - where starting a game with it is one tap away.
+      router.push("/play");
+    } catch (err) {
+      console.error("Error saving bracket:", err);
+      setIsSaving(false);
+      alert("Could not save that bracket. Please try again.");
+    }
   };
 
   const handlePlayBracket = () => {
     if (bracketItems.length < MIN_ITEMS)
       return alert("You need at least 4 items to play.");
 
-    window.location.href = "/play";
+    router.push("/play");
   };
 
   const itemsNeeded = Math.max(0, MIN_ITEMS - bracketItems.length);
@@ -247,7 +266,8 @@ export default function CreateBracketPage() {
             className="bracket-glow-pulse"
             sx={{
               ...focusableButtonSx,
-              cursor: "pointer",
+              cursor: isSaving ? "default" : "pointer",
+              opacity: isSaving ? 0.6 : 1,
               textAlign: "center",
               padding: "16px",
               borderRadius: "16px",
@@ -262,7 +282,11 @@ export default function CreateBracketPage() {
                 color: "var(--card)",
               }}
             >
-              {user ? "SAVE BRACKET" : "PLAY BRACKET"}
+              {user
+                ? isSaving
+                  ? "SAVING..."
+                  : "SAVE BRACKET"
+                : "PLAY BRACKET"}
             </Typography>
           </Box>
         ) : (

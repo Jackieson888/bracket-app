@@ -32,6 +32,7 @@ type Props = {
   extraVoterCount?: number;
   votePct?: number | null;
   accentColor?: string | null;
+  isMyPick?: boolean;
   className?: string;
   style?: CSSProperties;
 };
@@ -44,6 +45,7 @@ export default function GameItemCard({
   extraVoterCount = 0,
   votePct = null,
   accentColor = null,
+  isMyPick = false,
   className,
   style,
 }: Props) {
@@ -58,11 +60,14 @@ export default function GameItemCard({
       <Card
         className={className}
         style={style}
+        data-picked={isMyPick ? "true" : undefined}
         sx={{
           position: "relative",
           borderRadius: "20px",
           border: "2px solid",
-          borderColor: accentColor ?? "rgba(255,255,255,0.08)",
+          borderColor: isMyPick
+            ? "var(--primary)"
+            : (accentColor ?? "rgba(255,255,255,0.08)"),
           // ease-in makes a tap feel laggy: nothing moves, then it snaps.
           // Decelerating gives the press an immediate response instead.
           transition:
@@ -112,10 +117,13 @@ export default function GameItemCard({
             )}
           </Box>
         ) : null}
+        {/* The still is the card: title and voters ride on top of it behind a
+            scrim, rather than taking a band of their own underneath. */}
         <CardActionArea onClick={() => handleVote({ item, index })}>
           <Box className="bracket-item-media">
             {previewUrl ? (
               <Image
+                className="bracket-item-still"
                 src={previewUrl}
                 alt={item.title}
                 fill
@@ -132,43 +140,51 @@ export default function GameItemCard({
                 }}
               />
             ) : null}
-          </Box>
-          <Box sx={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
-            <Typography
-              sx={{
-                fontFamily: "var(--font-body)",
-                fontWeight: 700,
-                fontSize: "19px",
-                color: "text.primary",
-              }}
-            >
-              {item.title}
-            </Typography>
-            {voters.length > 0 || extraVoterCount > 0 ? (
-              <Box sx={{ display: "flex", alignItems: "center", minHeight: "24px" }}>
-                {voters.map((voter) => (
-                  <Box
-                    key={voter.id}
-                    className="bracket-voter-avatar"
-                    sx={{ backgroundColor: voter.color }}
-                  >
-                    <AvatarGlyph initials={voter.initials} size={13} />
-                  </Box>
-                ))}
-                {extraVoterCount > 0 ? (
-                  <Typography
-                    sx={{
-                      marginLeft: "4px",
-                      fontFamily: "var(--font-heading)",
-                      fontSize: "12px",
-                      color: "text.secondary",
-                    }}
-                  >
-                    +{extraVoterCount}
-                  </Typography>
-                ) : null}
+            <Box className="bracket-item-scrim" aria-hidden="true" />
+            {isMyPick ? (
+              <Box className="bracket-item-pick">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="m5 13 4 4L19 7"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                YOUR PICK
               </Box>
             ) : null}
+            <Box className="bracket-item-caption">
+              <Typography className="bracket-item-title">
+                {item.title}
+              </Typography>
+              {voters.length > 0 || extraVoterCount > 0 ? (
+                <Box sx={{ display: "flex", alignItems: "center", minHeight: "24px" }}>
+                  {voters.map((voter) => (
+                    <Box
+                      key={voter.id}
+                      className="bracket-voter-avatar"
+                      sx={{ backgroundColor: voter.color }}
+                    >
+                      <AvatarGlyph initials={voter.initials} size={13} />
+                    </Box>
+                  ))}
+                  {extraVoterCount > 0 ? (
+                    <Typography
+                      sx={{
+                        marginLeft: "4px",
+                        fontFamily: "var(--font-heading)",
+                        fontSize: "12px",
+                        color: "text.secondary",
+                      }}
+                    >
+                      +{extraVoterCount}
+                    </Typography>
+                  ) : null}
+                </Box>
+              ) : null}
+            </Box>
           </Box>
         </CardActionArea>
       </Card>

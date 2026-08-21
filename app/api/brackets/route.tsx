@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const brackets = db.collection("brackets");
 
     const doc = {
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     const client = await clientPromise;
-    const db = client.db("test");
+    const db = client.db("prod");
     const brackets = db.collection("brackets");
 
     const query = req.url.includes("?") ? new URL(req.url).searchParams : null;

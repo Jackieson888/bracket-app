@@ -56,7 +56,7 @@ async function withSessionsCollection(callback) {
   }
 
   const client = await clientPromise;
-  const db = client.db("test");
+  const db = client.db("prod");
   const sessions = db.collection("sessions");
   return callback(sessions);
 }
@@ -169,7 +169,7 @@ async function withGameResultsCollection(callback) {
   }
 
   const client = await clientPromise;
-  const db = client.db("test");
+  const db = client.db("prod");
   const gameResults = db.collection("gameResults");
   await ensureGameResultsIndexes(gameResults);
   return callback(gameResults);
